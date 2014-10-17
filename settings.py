@@ -153,7 +153,7 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'django.contrib.sites',
     'django.contrib.staticfiles',
-
+    'django.contrib.messages',
     #all of these are needed for the askbot
     'django.contrib.admin',
     'django.contrib.humanize',
