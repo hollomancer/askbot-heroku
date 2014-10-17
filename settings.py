@@ -281,3 +281,5 @@ GROUP_MESSAGING = {
     'BASE_URL_GETTER_FUNCTION': 'askbot.models.user_get_profile_url',
     'BASE_URL_PARAMS': {'section': 'messages', 'sort': 'inbox'}
 }
+
+JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)
