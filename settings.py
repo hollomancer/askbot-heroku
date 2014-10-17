@@ -173,6 +173,7 @@ INSTALLED_APPS = (
     'djkombu',
     'followit',
     'tinymce',
+    'compressor',
     'group_messaging',
     #'avatar',#experimental use git clone git://github.com/ericflo/django-avatar.git$
 )
