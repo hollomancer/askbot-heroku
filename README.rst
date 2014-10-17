@@ -2,7 +2,6 @@
 Askbot-Heroku - Q&A forum
 ==========================
 
-<<<<<<< HEAD
 This is a fork of the Askbot project - open source Q&A system, like StackOverflow, Yahoo Answers and some others.
 
 This fork consists of an initialized Askbot installation containing the necessary modifications to deploy in heroku with a PostgreSQL database.
@@ -26,6 +25,7 @@ To get a value for SECRET_KEY you can use the linux utility ``apg``.
 I will try to keep this repository synced with https://github.com/ASKBOT/askbot-devel.git but this is not guaranteed.
 
 The rest of this README comes from the original project.
+
 =======
 This is Askbot project - open source Q&A system, like StackOverflow, Yahoo Answers and some others.
 Askbot is based on code of CNPROG, originally created by Mike Chen 
@@ -35,13 +35,11 @@ Demos and hosting are available at http://askbot.com.
 
 How to contribute
 =================
->>>>>>> upstream/master
 
 **Translators: DO NOT use git to contribute translations!!!** instead - translate at https://www.transifex.com/projects/p/askbot/.
 
 All documentation is in the directory askbot/doc
 
-<<<<<<< HEAD
 Askbot is based on code of CNPROG, originally created by Mike Chen 
 and Sailing Cai and some code written for OSQA
 =======
@@ -67,5 +65,3 @@ Askbot software is licensed under GPL, version 3.
 Copyright Askbot S.p.A and the project contributors, 2010-2013.
 
 "Askbot" is a trademark and service mark registered in the United States, number 4323777.
-
->>>>>>> upstream/master
