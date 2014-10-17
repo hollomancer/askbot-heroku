@@ -60,6 +60,10 @@ def ask_widget(request, widget_id):
     widget = get_object_or_404(models.AskWidget, id=widget_id)
 
     if request.method == "POST":
+
+        if askbot_settings.READ_ONLY_MODE_ENABLED:
+            return redirect('ask_by_widget')
+
         form = forms.AskWidgetForm(
                     include_text=widget.include_text_field,
                     data=request.POST,
@@ -115,7 +119,8 @@ def ask_widget(request, widget_id):
                 return redirect('ask_by_widget_complete')
             else:
                 #FIXME: this redirect is temporal need to create the correct view
-                next_url = '%s?next=%s' % (reverse('widget_signin'), reverse('ask_by_widget'))
+                next_url = '%s?next=%s' % (reverse('widget_signin'),
+                                           reverse('ask_by_widget', args=(widget_id,)))
                 return redirect(next_url)
 
         form = forms.AskWidgetForm(
@@ -157,6 +162,7 @@ def list_widgets(request, model):
     return render(request, 'embed/list_widgets.html', data)
 
 @decorators.admins_only
+@csrf.csrf_protect
 def create_widget(request, model):
     form_class = _get_form(model)
     model_class = _get_model(model)
@@ -175,6 +181,7 @@ def create_widget(request, model):
     return render(request, 'embed/widget_form.html', data)
 
 @decorators.admins_only
+@csrf.csrf_protect
 def edit_widget(request, model, widget_id):
     model_class = _get_model(model)
     form_class = _get_form(model)
@@ -214,6 +221,7 @@ def edit_widget(request, model, widget_id):
     return render(request, 'embed/widget_form.html', data)
 
 @decorators.admins_only
+@csrf.csrf_protect
 def delete_widget(request, model, widget_id):
     model_class = _get_model(model)
     widget = get_object_or_404(model_class, pk=widget_id)
@@ -237,7 +245,7 @@ def render_ask_widget_js(request, widget_id):
         'variable_name': variable_name
     }
     content =  content_tpl.render(RequestContext(request, context_dict))
-    return HttpResponse(content, mimetype='text/javascript')
+    return HttpResponse(content, content_type='text/javascript')
 
 def render_ask_widget_css(request, widget_id):
     widget = get_object_or_404(models.AskWidget, pk=widget_id)
@@ -250,7 +258,7 @@ def render_ask_widget_css(request, widget_id):
         'variable_name': variable_name
     }
     content =  content_tpl.render(RequestContext(request, context_dict))
-    return HttpResponse(content, mimetype='text/css')
+    return HttpResponse(content, content_type='text/css')
 
 def question_widget(request, widget_id):
     """Returns the first x questions based on certain tags.

@@ -6,8 +6,10 @@ import askbot.conf.vote_rules
 import askbot.conf.reputation_changes
 import askbot.conf.karma_and_badges_visibility
 import askbot.conf.email
+import askbot.conf.email_text
 import askbot.conf.forum_data_rules
 import askbot.conf.moderation
+import askbot.conf.question_lists
 import askbot.conf.flatpages
 import askbot.conf.site_settings
 import askbot.conf.license
@@ -27,6 +29,7 @@ import askbot.conf.badges
 import askbot.conf.login_providers
 import askbot.conf.access_control
 import askbot.conf.site_modes
+import askbot.conf.words
 
 #import main settings object
 from askbot.conf.settings_wrapper import settings

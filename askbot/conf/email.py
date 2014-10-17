@@ -30,12 +30,37 @@ settings.register(
     )
 )
 
+def get_default_admin_email():
+    try:
+        return django_settings.ADMINS[0][1]
+    except:
+        return ''
+
+settings.register(
+    livesettings.StringValue(
+        EMAIL,
+        'ADMIN_EMAIL',
+        default=get_default_admin_email(),
+        description=_('Site administrator email address')
+    )
+)
+
 settings.register(
     livesettings.BooleanValue(
         EMAIL,
         'ENABLE_EMAIL_ALERTS',
         default = True,
         description = _('Enable email alerts'),
+    )
+)
+
+settings.register(
+    livesettings.BooleanValue(
+        EMAIL,
+        'HTML_EMAIL_ENABLED',
+        default=True,
+        description=_('Enable HTML-formatted email'),
+        help_text=_('May not be supported by some email clients')
     )
 )
 
@@ -131,6 +156,21 @@ settings.register(
             'run the management command "send_unanswered_question_reminders" '
             '(for example, via a cron job - with an appropriate frequency) '
         )
+    )
+)
+
+UNANSWERED_REMINDER_RECIPIENTS_CHOICES = (
+    ('everyone', _('everyone')),
+    ('admins', _('moderators & administrators'))
+)
+
+settings.register(
+    livesettings.StringValue(
+        EMAIL,
+        'UNANSWERED_REMINDER_RECIPIENTS',
+        default='everyone',
+        choices=UNANSWERED_REMINDER_RECIPIENTS_CHOICES,
+        description=_('Whom to remind about unanswered questions')
     )
 )
 
@@ -230,15 +270,6 @@ settings.register(
 )
 
 settings.register(
-    livesettings.BooleanValue(
-        EMAIL,
-        'EMAIL_UNIQUE',
-        default=True,
-        description=_('Allow only one account per email address')
-    )
-)
-
-settings.register(
     livesettings.StringValue(
         EMAIL,
         'ANONYMOUS_USER_EMAIL',
@@ -292,11 +323,11 @@ settings.register(
     livesettings.StringValue(
         EMAIL,
         'SELF_NOTIFY_EMAILED_POST_AUTHOR_WHEN',
-        description = _(
+        description=_(
             'Emailed post: when to notify author about publishing'
         ),
-        choices = const.SELF_NOTIFY_EMAILED_POST_AUTHOR_WHEN_CHOICES,
-        default = const.NEVER
+        choices=const.SELF_NOTIFY_EMAILED_POST_AUTHOR_WHEN_CHOICES,
+        default=const.NEVER
     )
 )
 

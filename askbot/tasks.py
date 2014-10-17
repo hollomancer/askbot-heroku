@@ -26,6 +26,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.template import Context
 from django.template.loader import get_template
 from django.utils.translation import ugettext as _
+from django.utils.translation import activate as activate_language
+from django.utils import simplejson
 from celery.decorators import task
 from askbot.conf import settings as askbot_settings
 from askbot import const
@@ -34,16 +36,52 @@ from askbot.models import Post, Thread, User, ReplyAddress
 from askbot.models.badges import award_badges_signal
 from askbot.models import get_reply_to_addresses, format_instant_notification_email
 from askbot import exceptions as askbot_exceptions
+from askbot.utils.twitter import Twitter
 
 # TODO: Make exceptions raised inside record_post_update_celery_task() ...
 #       ... propagate upwards to test runner, if only CELERY_ALWAYS_EAGER = True
 #       (i.e. if Celery tasks are not deferred but executed straight away)
+@task(ignore_result=True)
+def tweet_new_post_task(post_id):
+
+    try:
+        twitter = Twitter()
+    except:
+        return
+
+    post = Post.objects.get(id=post_id)
+
+    is_mod = post.author.is_administrator_or_moderator()
+    if is_mod or post.author.reputation > askbot_settings.MIN_REP_TO_TWEET_ON_OTHERS_ACCOUNTS:
+        tweeters = User.objects.filter(social_sharing_mode=const.SHARE_EVERYTHING)
+        tweeters = tweeters.exclude(id=post.author.id)
+        access_tokens = tweeters.values_list('twitter_access_token', flat=True)
+    else:
+        access_tokens = list()
+
+    tweet_text = post.as_tweet()
+
+    for raw_token in access_tokens:
+        token = simplejson.loads(raw_token)
+        twitter.tweet(tweet_text, access_token=token)
+
+    if post.author.social_sharing_mode != const.SHARE_NOTHING:
+        token = simplejson.loads(post.author.twitter_access_token)
+        twitter.tweet(tweet_text, access_token=token)
+        
 
 @task(ignore_result = True)
 def notify_author_of_published_revision_celery_task(revision):
     #todo: move this to ``askbot.mail`` module
     #for answerable email only for now, because
     #we don't yet have the template for the read-only notification
+
+    data = {
+        'site_name': askbot_settings.APP_SHORT_NAME,
+        'post': revision.post
+    }
+    headers = None
+
     if askbot_settings.REPLY_BY_EMAIL:
         #generate two reply codes (one for edit and one for addition)
         #to format an answerable email or not answerable email
@@ -65,44 +103,42 @@ def notify_author_of_published_revision_celery_task(revision):
         if revision.post.post_type == 'question':
             mailto_link_subject = revision.post.thread.title
         else:
-            mailto_link_subject = _('An edit for my answer')
+            mailto_link_subject = _('make an edit by email')
         #todo: possibly add more mailto thread headers to organize messages
 
         prompt = _('To add to your post EDIT ABOVE THIS LINE')
         reply_separator_line = const.SIMPLE_REPLY_SEPARATOR_TEMPLATE % prompt
-        data = {
-            'site_name': askbot_settings.APP_SHORT_NAME,
-            'post': revision.post,
-            'author_email_signature': revision.author.email_signature,
-            'replace_content_address': replace_content_address,
-            'reply_separator_line': reply_separator_line,
-            'mailto_link_subject': mailto_link_subject,
-            'reply_code': reply_code
-        }
-
-        #load the template
-        template = get_template('email/notify_author_about_approved_post.html')
-        #todo: possibly add headers to organize messages in threads
+        data['reply_code'] = reply_code
+        data['author_email_signature'] = revision.author.email_signature
+        data['replace_content_address'] = replace_content_address
+        data['reply_separator_line'] = reply_separator_line
+        data['mailto_link_subject'] = mailto_link_subject
         headers = {'Reply-To': append_content_address}
-        #send the message
-        mail.send_mail(
-            subject_line = _('Your post at %(site_name)s is now published') % data,
-            body_text = template.render(Context(data)),
-            recipient_list = [revision.author.email,],
-            related_object = revision,
-            activity_type = const.TYPE_ACTIVITY_EMAIL_UPDATE_SENT,
-            headers = headers
-        )
+
+    #load the template
+    activate_language(revision.post.language_code)
+    template = get_template('email/notify_author_about_approved_post.html')
+    #todo: possibly add headers to organize messages in threads
+    #send the message
+    mail.send_mail(
+        subject_line = _('Your post at %(site_name)s is now published') % data,
+        body_text = template.render(Context(data)),
+        recipient_list = [revision.author.email,],
+        related_object = revision,
+        activity_type = const.TYPE_ACTIVITY_EMAIL_UPDATE_SENT,
+        headers = headers
+    )
 
 @task(ignore_result = True)
 def record_post_update_celery_task(
         post_id,
         post_content_type_id,
-        newly_mentioned_user_id_list = None,
-        updated_by_id = None,
-        timestamp = None,
-        created = False,
-        diff = None,
+        newly_mentioned_user_id_list=None,
+        updated_by_id=None,
+        suppress_email=False,
+        timestamp=None,
+        created=False,
+        diff=None,
     ):
     #reconstitute objects from the database
     updated_by = User.objects.get(id=updated_by_id)
@@ -124,6 +160,7 @@ def record_post_update_celery_task(
             updated_by=updated_by,
             notify_sets=notify_sets,
             activity_type=activity_type,
+            suppress_email=suppress_email,
             timestamp=timestamp,
             diff=diff
         )
@@ -132,7 +169,7 @@ def record_post_update_celery_task(
         # HACK: exceptions from Celery job don't propagate upwards
         # to the Django test runner
         # so at least let's print tracebacks
-        print >>sys.stderr, traceback.format_exc()
+        print >>sys.stderr, unicode(traceback.format_exc()).encode('utf-8')
         raise
 
 @task(ignore_result = True)
@@ -152,10 +189,11 @@ def record_question_visit(
     if update_view_count:
         question_post.thread.increase_view_count()
 
-    user = User.objects.get(id=user_id)
-
-    if user.is_anonymous():
+    #we do not track visits per anon user
+    if user_id is None:
         return
+
+    user = User.objects.get(id=user_id)
 
     #2) question view count per user and clear response displays
     #user = User.objects.get(id = user_id)
@@ -215,6 +253,7 @@ def send_instant_notifications_about_activity_in_post(
 
         reply_address, alt_reply_address = get_reply_to_addresses(user, post)
 
+        activate_language(post.language_code)
         subject_line, body_text = format_instant_notification_email(
                             to_user = user,
                             from_user = update_activity.user,

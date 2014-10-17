@@ -23,6 +23,8 @@ settings.register(
     )
 )
 
+#todo: remove this - we don't want the local login button
+#but instead always show the login/password field when used
 settings.register(
     livesettings.BooleanValue(
         LOGIN_PROVIDERS,
@@ -62,6 +64,61 @@ settings.register(
     )
 )
 
+settings.register(
+    livesettings.BooleanValue(
+        LOGIN_PROVIDERS,
+        'SIGNIN_CUSTOM_OPENID_ENABLED',
+        default=False,
+        description=_('Enable custom OpenID login')
+    )
+)
+
+settings.register(
+    livesettings.StringValue(
+        LOGIN_PROVIDERS,
+        'SIGNIN_CUSTOM_OPENID_NAME',
+        default=_('Custom OpenID'),
+        description=_('Short name for the custom OpenID provider')
+    )
+)
+
+CUSTOM_OPENID_MODE_CHOICES = (
+    ('openid-direct', _('Direct button login')),
+    ('openid-username', _('Requires username'))
+)
+
+settings.register(
+    livesettings.StringValue(
+        LOGIN_PROVIDERS,
+        'SIGNIN_CUSTOM_OPENID_MODE',
+        default='openid-direct',
+        description=_('Type of OpenID login'),
+        choices=CUSTOM_OPENID_MODE_CHOICES
+    )
+)
+
+settings.register(
+    livesettings.ImageValue(
+        LOGIN_PROVIDERS,
+        'SIGNIN_CUSTOM_OPENID_LOGIN_BUTTON',
+        default='/images/logo.gif',
+        description=_('Upload custom OpenID icon'),
+        url_resolver=skin_utils.get_media_url
+    )
+)
+
+settings.register(
+    livesettings.StringValue(
+        LOGIN_PROVIDERS,
+        'SIGNIN_CUSTOM_OPENID_ENDPOINT',
+        default='http://example.com',
+        description=_('Custom OpenID endpoint'),
+        help_text=_('Important: with the "username" mode there must be a '
+                    '%%(username)s placeholder e.g. '
+                    'http://example.com/%%(username)s/'),
+    )
+)
+
 providers = (
     'local',
     'AOL',
@@ -69,7 +126,8 @@ providers = (
     'ClaimID',
     'Facebook',
     'Flickr',
-    'Google',
+    #'Google Plus',
+    'Mozilla Persona',
     'Twitter',
     'LinkedIn',
     'LiveJournal',
@@ -81,23 +139,37 @@ providers = (
     'Verisign',
     'Yahoo',
     'identi.ca',
+    'LaunchPad',
 )
 
-need_extra_setup = ('Twitter', 'Facebook', 'LinkedIn', 'identi.ca',)
+DISABLED_BY_DEFAULT = ('LaunchPad', 'Mozilla Persona')
+
+NEED_EXTRA_SETUP = ('Google Plus', 'Twitter', 'Facebook', 'LinkedIn', 'identi.ca',)
+
+GOOGLE_METHOD_CHOICES = (
+    ('openid', 'OpenID (deprecated)'),
+    ('google-plus', 'Google Plus'),
+    ('disabled', _('disable')),
+)
 
 for provider in providers:
+    if provider == 'local':
+        provider_string = unicode(_('local password'))
+    else:
+        provider_string = provider
+
     kwargs = {
-        'description': _('Activate %(provider)s login') % {'provider': provider},
-        'default': True,
+        'description': _('Activate %(provider)s login') % {'provider': provider_string},
+        'default': not (provider in DISABLED_BY_DEFAULT)
     }
-    if provider in need_extra_setup:
+    if provider in NEED_EXTRA_SETUP:
         kwargs['help_text'] = _(
             'Note: to really enable %(provider)s login '
             'some additional parameters will need to be set '
             'in the "External keys" section'
         ) % {'provider': provider}
 
-    setting_name = 'SIGNIN_%s_ENABLED' % provider.upper()
+    setting_name = 'SIGNIN_%s_ENABLED' % provider.upper().replace(' ', '_')
     settings.register(
         livesettings.BooleanValue(
             LOGIN_PROVIDERS,
@@ -105,3 +177,18 @@ for provider in providers:
             **kwargs
         )
     )
+
+    if provider == 'local':
+        #add Google settings here as one-off
+        settings.register(
+            livesettings.StringValue(
+                LOGIN_PROVIDERS,
+                'SIGNIN_GOOGLE_METHOD',
+                default='openid',
+                choices=GOOGLE_METHOD_CHOICES,
+                description=_('Google login'),
+                help_text=_(
+                    'To enable Google-Plus login, OAuth keys are required in the "External keys" section'
+                )
+            )
+        )

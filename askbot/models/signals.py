@@ -25,6 +25,19 @@ user_registered = django.dispatch.Signal(providing_args=['user',])
 #todo: move this to authentication app
 user_logged_in = django.dispatch.Signal(providing_args=['session'])
 
+new_answer_posted = django.dispatch.Signal(
+    providing_args=['answer', 'user', 'form_data']
+)
+new_question_posted = django.dispatch.Signal(
+    providing_args=['question', 'user', 'form_data']
+)
+new_comment_posted = django.dispatch.Signal(
+    providing_args=['comment', 'user', 'form_data']
+)
+answer_edited = django.dispatch.Signal(
+    providing_args=['answer', 'user', 'form_data']
+)
+
 post_updated = django.dispatch.Signal(
                                 providing_args=[
                                             'post',
@@ -39,6 +52,7 @@ post_revision_published = django.dispatch.Signal(
                                 ]
                             )
 site_visited = django.dispatch.Signal(providing_args=['user', 'timestamp'])
+reputation_received = django.dispatch.Signal(providing_args=['user', 'reputation_before'])
 
 def pop_signal_receivers(signal):
     """disables a given signal by removing listener functions

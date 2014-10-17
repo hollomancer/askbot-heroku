@@ -1,10 +1,24 @@
-//var $, scriptUrl, askbotSkin
 /**
  * attention - this function needs to be retired
  * as it cannot accurately give url to the media file
  */
 var mediaUrl = function(resource){
     return askbot['settings']['static_url'] + 'default' + '/' + resource;
+};
+
+var getCookie = function(name) {
+    var cookieValue = null;
+    if (document.cookie && document.cookie != '') {
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+            var cookie = $.trim(cookies[i]);
+            // Does this cookie string begin with the name we want?
+            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+                return decodeURIComponent(cookie.substring(name.length + 1));
+            }
+        }
+    }
+    return cookieValue;
 };
 
 var cleanUrl = function(url){
@@ -27,6 +41,77 @@ var animateHashes = function(){
                 $(id_value).css('backgroundColor', previous_color);
             });
     }
+};
+
+/**
+ * @param {string} id_token - any token
+ * @param {string} unique_seed - the unique part
+ * @returns {string} unique id that can be used in DOM
+ */
+var askbotMakeId = function(id_token, unique_seed) {
+    return id_token + '-' + unique_seed;
+};
+
+var getNewUniqueInt = function() {
+    var num = askbot['data']['uniqueInt'] || 0;
+    num = num + 1;
+    askbot['data']['uniqueInt'] = num;
+    return num;
+};
+
+/**
+ * generic tag cleaning function, settings
+ * are from askbot live settings and askbot.const
+ */
+var cleanTag = function(tag_name, settings) {
+    var tag_regex = new RegExp(settings['tag_regex']);
+    if (tag_regex.test(tag_name) === false) {
+        var firstChar = tag_name.substring(0, 1);
+        if (settings['tag_forbidden_first_chars'].indexOf(firstChar) > -1) {
+            throw settings['messages']['wrong_first_char'];
+        } else {
+            throw settings['messages']['wrong_chars'];
+        }
+    }
+
+    var max_length = settings['max_tag_length'];
+    if (tag_name.length > max_length) {
+        throw interpolate(
+            ngettext(
+                'must be shorter than %(max_chars)s character',
+                'must be shorter than %(max_chars)s characters',
+                max_length
+            ),
+            {'max_chars': max_length },
+            true
+        );
+    }
+    if (settings['force_lowercase_tags']) {
+        return tag_name.toLowerCase();
+    } else {
+        return tag_name;
+    }
+};
+
+
+var getSingletonController = function(controllerClass, name) {
+    askbot['controllers'] = askbot['controllers'] || {};
+    var controller = askbot['controllers'][name];
+    if (controller === undefined) {
+        controller = new controllerClass();
+        askbot['controllers'][name] = controller;
+    }
+    return controller;
+};
+
+var setController = function(controller, name) {
+    askbot['controllers'] = askbot['controllers'] || {};
+    askbot['controllers'][name] = controller;
+};
+
+var sortChildNodes = function(node, cmpFunc) {
+    var items = node.children().sort(cmpFunc);
+    node.append(items);
 };
 
 var getUniqueValues = function(values) {
@@ -63,6 +148,18 @@ var joinAsPhrase = function(values) {
         var prev = values.pop();
         return values.join(', ') + prev + gettext('and') + last;
     }
+};
+
+/**
+ * @return {boolean}
+ */
+var inArray = function(item, itemsList) {
+    for (var i = 0; i < itemsList.length; i++) {
+        if (item === itemsList[i]) {
+            return true;
+        }
+    }
+    return false;
 };
 
 var showMessage = function(element, msg, where) {
@@ -126,6 +223,14 @@ var setupButtonEventHandlers = function(button, callback){
     button.click(callback);
 };
 
+var removeButtonEventHandlers = function(button) {
+    button.unbind('click');
+    button.unbind('keydown');
+};
+
+var decodeHtml = function(encodedText) {
+    return $('<div/>').html(encodedText).text();
+};
 
 var putCursorAtEnd = function(element){
     var el = $(element).get()[0];
@@ -187,6 +292,7 @@ var notify = function() {
     };
 }();
 
+
 /* **************************************************** */
 // Search query-string manipulation utils
 /* **************************************************** */
@@ -234,10 +340,11 @@ QSutils.patch_query_string = function (query_string, patch, remove) {
     /* The order of selectors should match the Django URL */
     add_selector('scope');
     add_selector('sort');
-    add_selector('query');
     add_selector('tags');
     add_selector('author');
     add_selector('page');
+    add_selector('page-size');
+    add_selector('query');
 
     return new_query_string;
 };
@@ -296,10 +403,31 @@ var inherits = function(childCtor, parentCtor) {
 var WrappedElement = function(){
     this._element = null;
     this._in_document = false;
+    this._idSeed = null;
 };
 /* note that we do not call inherits() here
  * See TippedInput as an example of a subclass
  */
+
+/**
+ * returns a unique integer for any instance of WrappedElement
+ * which can be used to construct a unique id for use in the DOM
+ * @return {string}
+ */
+WrappedElement.prototype.getIdSeed = function() {
+    var seed = this._idSeed || parseInt(getNewUniqueInt());
+    this._idSeed = seed;
+    return seed;
+};
+
+/**
+ * returns unique ide based on the prefix and the id seed
+ * @param {string} prefix
+ * @return {string}
+ */
+WrappedElement.prototype.makeId = function(prefix) {
+    return askbotMakeId(prefix, this.getIdSeed());
+};
 
 /**
  * notice that we use ObjCls.prototype.someMethod = function()
@@ -351,8 +479,12 @@ WrappedElement.prototype.getElement = function(){
     }
     return this._element;
 };
+
+WrappedElement.prototype.hasElement = function() {
+    return (this._element !== undefined);
+};
 WrappedElement.prototype.inDocument = function(){
-    return this._in_document;
+    return (this._element && this._element.is(':hidden') === false);
 };
 WrappedElement.prototype.enterDocument = function(){
     return this._in_document = true;
@@ -419,6 +551,319 @@ WaitIcon.prototype.createDom = function() {
     img.attr('src', mediaUrl('media/images/ajax-loader.gif'));
     box.append(img);
     this.setVisible(this._isVisible); 
+};
+
+var Paginator = function() {
+    WrappedElement.call(this);
+};
+inherits(Paginator, WrappedElement);
+
+/** 
+ * A mandotory method.
+ * this method needs to be implemented by the subclass
+ * @interface
+ * @param data is json dict returted by the server
+ */
+Paginator.prototype.renderPage = function(data) {
+    throw 'implement me in the subclass';
+};
+
+/**
+ * A mandatory method.
+ * @interface - implement in subclass
+ * returns url that can be used to retrieve page data
+ */
+Paginator.prototype.getPageDataUrl = function(pageNo) {
+    throw 'implement me in the subclass';
+};
+
+/** 
+ * Optional method
+ * @interface - implement in subclass
+ * returns url parameters for the page request
+ */
+Paginator.prototype.getPageDataUrlParams = function(pageNo) {};
+
+Paginator.prototype.setIsLoading = function(isLoading) {
+    this._isLoading = isLoading;
+};
+
+Paginator.prototype.startLoadingPageData = function(pageNo) {
+    if (this._isLoading) {
+        return;
+    }
+    var me = this;
+    var requestParams = {
+        type: 'GET',
+        dataType: 'json',
+        url: this.getPageDataUrl(pageNo),
+        cache: false,
+        success: function(data) {
+            me.renderPage(data);
+            me.setCurrentPage(pageNo);
+            me.setIsLoading(false);
+        },
+        failure: function() {
+            me.setIsLoading(false);
+        }
+    };
+    var urlParams = this.getPageDataUrlParams(pageNo);
+    if (urlParams) {
+        requestParams['data'] = urlParams;
+    }
+    $.ajax(requestParams);
+    me.setIsLoading(true);
+    return false;
+};
+
+Paginator.prototype.getCurrentPageNo = function() {
+    var page = this._element.find('.curr');
+    return parseInt(page.attr('data-page'));
+};
+
+Paginator.prototype.getIncrementalPageHandler = function(direction) {
+    var me = this;
+    return function() {
+        var pageNo = me.getCurrentPageNo();
+        if (direction === 'next') {
+            pageNo = pageNo + 1;
+        } else {
+            pageNo = pageNo - 1;
+        }
+        me.startLoadingPageData(pageNo);
+        return false;
+    };
+};
+
+Paginator.prototype.getWindowStart = function(pageNo) {
+    var totalPages = this._numPages;
+    var activePages = this._numActivePages;
+
+    //paginator is "short" w/o prev or next, no need to rerender
+    if (totalPages === activePages) {
+        return 1;
+    }
+
+    //we are in leading range
+    if (pageNo < activePages) {
+        return 1;
+    }
+
+    //we are in trailing range
+    var lastWindowStart = totalPages - activePages + 1;
+    if (pageNo > lastWindowStart) {
+        return lastWindowStart;
+    }
+
+    return pageNo - Math.floor(activePages/2);
+};
+
+Paginator.prototype.renderPaginatorWindow = function(windowStart) {
+    var anchors = this._paginatorAnchors;
+    for (var i = 0; i < anchors.length; i++) {
+        var anchor = $(anchors[i]);
+        removeButtonEventHandlers(anchor);
+        var pageNo = windowStart + i;
+        //re-render displayed number
+        anchor.html(pageNo);
+        //re-render the tooltip text
+        var labelTpl = gettext('page %s');
+        anchor.attr('title', interpolate(labelTpl, [pageNo]));
+        //re-render the "page" data value
+        anchor.parent().attr('data-page', pageNo);
+        //setup new event handler
+        var pageHandler = this.getPageButtonHandler(pageNo);
+        setupButtonEventHandlers(anchor, pageHandler);
+    }
+};
+
+Paginator.prototype.renderPaginatorEdges = function(windowStart, pageNo) {
+    //first page button
+    var first = this._firstPageNav;
+    if (windowStart === 1) {
+        first.hide();
+    } else {
+        first.show();
+    }
+
+    //last page button
+    var lastWindowStart = this._numPages - this._numActivePages + 1;
+    var last = this._lastPageNav;
+    if (windowStart === lastWindowStart) {
+        last.hide();
+    } else {
+        last.show();
+    }
+
+    //show or hide "prev" and "next" buttons
+    if (this._numPages === this._numActivePages) {
+        this._prevPageButton.hide();
+        this._nextPageButton.hide();
+    } else {
+        if (pageNo === 1) {
+            this._prevPageButton.hide();
+        } else {
+            this._prevPageButton.show();
+        }
+        if (pageNo === this._numPages) {
+            this._nextPageButton.hide();
+        } else {
+            this._nextPageButton.show();
+        }
+    }
+};
+
+Paginator.prototype.setCurrentPage = function(pageNo) {
+
+    var currPageNo = this.getCurrentPageNo();
+    var currWindow = this.getWindowStart(currPageNo);
+    var newWindow = this.getWindowStart(pageNo);
+    if (newWindow !== currWindow) {
+        this.renderPaginatorWindow(newWindow);
+    }
+
+    //select the current page
+    var page = this._mainPagesNav.find('[data-page="' + pageNo + '"]');
+    if (page.length === 1) {
+        var curr = this._element.find('.curr');
+        curr.removeClass('curr');
+        page.addClass('curr');
+    }
+
+    //show or hide ellipses (...) and the last/first page buttons
+    //newWindow is starting page of the new paginator window
+    this.renderPaginatorEdges(newWindow, pageNo);
+};
+
+Paginator.prototype.createButton = function(cls, label) {
+    var btn = this.makeElement('span');
+    btn.addClass(cls);
+    var link = this.makeElement('a');
+    link.html(label);
+    btn.append(link);
+    return btn;
+};
+
+Paginator.prototype.getPageButtonHandler = function(pageNo) {
+    var me = this;
+    return function() { 
+        if (me.getCurrentPageNo() !== pageNo) {
+            me.startLoadingPageData(pageNo); 
+        }
+        return false;
+    };
+};
+
+Paginator.prototype.decorate = function(element) {
+    this._element = element;
+    var pages = element.find('.page');
+    this._firstPageNav = element.find('.first-page-nav');
+    this._lastPageNav = element.find('.last-page-nav');
+    this._mainPagesNav = element.find('.main-pages-nav');
+    var paginatorButtons = element.find('.paginator');
+    this._numPages = paginatorButtons.data('numPages');
+
+    var mainNavButtons = element.find('.main-pages-nav a');
+    this._paginatorAnchors =  mainNavButtons;
+    this._numActivePages = mainNavButtons.length;
+
+    for (var i = 0; i < pages.length; i++) {
+        var page = $(pages[i]);
+        var pageNo = page.data('page');
+        var link = page.find('a');
+        var pageHandler = this.getPageButtonHandler(pageNo);
+        setupButtonEventHandlers(link, pageHandler);
+    }
+
+    var currPageNo = element.find('.curr').data('page');
+    
+    //next page button
+    var nextPage = element.find('.next');
+    this._nextPageButton = nextPage;
+    if (currPageNo === this._numPages) {
+        this._nextPageButton.hide();
+    }
+
+    setupButtonEventHandlers(
+        this._nextPageButton,
+        this.getIncrementalPageHandler('next')
+    );
+
+    var prevPage = element.find('.prev');
+    this._prevPageButton = prevPage;
+    if (currPageNo === 1) {
+        this._prevPageButton.hide();
+    }
+
+    setupButtonEventHandlers(
+        this._prevPageButton,
+        this.getIncrementalPageHandler('prev')
+    );
+};
+
+/**
+ * makes images never take more spaces then they can take
+ * @param {<Array>} breakPoints
+ * @param {number} maxWidth
+ * an array of array values like (min-width, width-offset) 
+ * where min-width is screen minimum width
+ * width-offset - difference between the actual screen width and
+ * max-width of the image.
+ * width-offset may be undefined - this way we know that this is
+ * the widest breakpoint and we apply the default max-width
+ * instead.
+ * We use this offset to calculate max-width in order to
+ * have the images fit the layout no matter the size of the image
+ */
+var LimitedWidthImage = function(breakPoints, maxWidth) {
+    /**
+     * breakPoints must be sorted in decreasing
+     * order of min-width
+     */
+    this._breakPoints = breakPoints;
+    /**
+     * this is width for the fully stretched
+     * window, above the first widest breakpoint
+     */
+    this._maxWidth = maxWidth;
+    WrappedElement.call(this);
+};
+inherits(LimitedWidthImage, WrappedElement);
+
+LimitedWidthImage.prototype.getImageWidthOffset = function(width) {
+    var numBreaks = this._breakPoints.length;
+    var offset = this._breakPoints[0][1];
+    for (var i = 0; i < numBreaks; i++) {
+        var point = this._breakPoints[i];
+        var minWidth = point[0];
+        if (width >= minWidth) {
+            break;
+        } else {
+            offset = point[1];
+        }
+    }
+    return offset;
+};
+
+LimitedWidthImage.prototype.autoResize = function() {
+    var windowWidth = $(window).width();
+    //1) find the offset for the nearest breakpoint
+    var widthOffset = this.getImageWidthOffset(windowWidth);
+    var maxWidth = '100%';
+    if (widthOffset !== undefined) {
+        maxWidth = windowWidth - widthOffset;
+    } else {
+        maxWidth = this._maxWidth;
+    }
+    this._element.css('max-width', maxWidth);
+    this._element.css('height', 'auto');
+};
+
+LimitedWidthImage.prototype.decorate = function(element) {
+    this._element = element;
+    this.autoResize();
+    var me = this;
+    $(window).resize(function() { me.autoResize(); });
 };
 
 /**
@@ -643,6 +1088,51 @@ TippedInput.prototype.decorate = function(element){
 };
 
 /**
+ * creates an alert that will momentarily flash
+ * and then self-destruct
+ */
+var FlashAlert = function(text) {
+    WrappedElement.call(this);
+    this._text = text;
+};
+inherits(FlashAlert, WrappedElement);
+
+FlashAlert.prototype.setPostRunHandler = function(handler) {
+    this._postRunHandler = handler;
+};
+
+FlashAlert.prototype.setText = function(text) {
+    this._text = text;
+    if (this.hasElement()) {
+        this._element.html(text);
+    };
+};
+
+FlashAlert.prototype.run = function() {
+    var element = this._element;
+    var me = this;
+    var postRunHandler = this._postRunHandler;
+    var finish = function() {
+        element.fadeOut();
+        me.dispose();
+        if (postRunHandler) {
+            postRunHandler();
+        }
+    };
+    element.fadeIn(function() { setTimeout(finish, 1000) });
+};
+
+FlashAlert.prototype.createDom = function() {
+    var element = this.makeElement('div');
+    element.addClass('flash-alert');
+    element.hide();
+    this._element = element;
+    if (this._text) {
+        element.html(this._text);
+    }
+};
+
+/**
  * will setup a bootstrap.js alert
  * programmatically
  */
@@ -778,6 +1268,92 @@ SimpleControl.prototype.setTitle = function(title){
     this._title = title;
 };
 
+SimpleControl.prototype.decorate = function(element) {
+    this._element = element;
+    this.setHandlerInternal();
+};
+
+/**
+ * @constructor
+ */
+var PostExpander = function() {
+    SimpleControl.call(this);
+    this._handler = this.getExpandHandler();
+};
+inherits(PostExpander, SimpleControl);
+
+PostExpander.prototype.setPostId = function(postId) {
+    this._postId = postId;
+};
+
+PostExpander.prototype.getPostId = function() {
+    return this._postId;
+};
+
+PostExpander.prototype.showWaitIcon = function() {
+    var icon = new WaitIcon();
+    this._element.html(icon.getElement());
+    icon.show();
+};
+
+PostExpander.prototype.updateTheDots = function() {
+    var numDots = this._cNumDots + 1;
+    if (numDots > this._maxNumDots) {
+        numDots = 1;
+    }
+    this._cNumDots = numDots;
+    var dots = '';
+    for (var i = 0; i < numDots; i++) {
+        dots += '&bull;';
+    }
+    for (; i < this._maxNumDots; i++) {
+        dots += '&nbsp;';
+    }
+    this._element.html(dots);
+};
+
+PostExpander.prototype.stopTheDots = function() {
+    clearInterval(this._dotsInterval);
+};
+
+PostExpander.prototype.startTheDots = function() {
+    var numDots = this._element.find('a').html().length + 2;
+    this._maxNumDots = numDots;
+    this._cNumDots = 0;
+    var dots = '';
+    for (var i = 0; i < numDots; i++) {
+        dots += '&nbsp;';
+    }
+    this._element.html(dots);
+    var me = this;
+    var handler = function() {
+        me.updateTheDots();
+    };
+    this._dotsInterval = setInterval(handler, 150);
+};
+
+PostExpander.prototype.getExpandHandler = function() {
+    var me = this;
+    return function() {
+        var element = me.getElement();
+        var snippet = $(element.parents('.snippet')[0]);
+        $.ajax({
+            type: 'GET',
+            dataType: 'json',
+            data: {'post_id': me.getPostId()},
+            url: askbot['urls']['getPostHtml'],
+            success: function(data) {
+                if (data['post_html']) {
+                    snippet.hide();
+                    snippet.html(data['post_html']);
+                    snippet.fadeIn();
+                }
+            }
+        });
+        me.showWaitIcon();
+    };
+};
+
 var EditLink = function(){
     SimpleControl.call(this)
 };
@@ -813,6 +1389,12 @@ CommentConvertLink.prototype.createDom = function(){
     hidden_input.attr('name', 'comment_id');
     hidden_input.attr('id', 'id_comment_id');
     element.append(hidden_input);
+
+    var csrf_token = this.makeElement('input');
+    csrf_token.attr('type', 'hidden');
+    csrf_token.attr('name', 'csrfmiddlewaretoken');
+    csrf_token.attr('value', getCookie(askbot['settings']['csrfCookieName']));
+    element.append(csrf_token);
 
     var submit = this.makeElement('input');
     submit.attr('type', 'submit');
@@ -870,6 +1452,7 @@ DeleteIcon.prototype.setContent = function(content){
 var ModalDialog = function() {
     WrappedElement.call(this);
     this._accept_button_text = gettext('Ok');
+    this._acceptBtnEnabled = true;
     this._reject_button_text = gettext('Cancel');
     this._heading_text = 'Add heading by setHeadingText()';
     this._initial_content = undefined;
@@ -877,6 +1460,8 @@ var ModalDialog = function() {
     var me = this;
     this._reject_handler = function() { me.hide(); };
     this._content_element = undefined;
+    this._headerEnabled = true;
+    this._className = undefined;
 };
 inherits(ModalDialog, WrappedElement);
 
@@ -886,6 +1471,13 @@ ModalDialog.prototype.show = function() {
 
 ModalDialog.prototype.hide = function() {
     this._element.modal('hide');
+};
+
+ModalDialog.prototype.setClass = function(cls) {
+    this._cssClass = cls;
+    if (this._element) {
+        this._element.addClass(cls);
+    };
 };
 
 ModalDialog.prototype.setContent = function(content) {
@@ -905,10 +1497,21 @@ ModalDialog.prototype.setHeadingText = function(text) {
 
 ModalDialog.prototype.setAcceptButtonText = function(text) {
     this._accept_button_text = text;
+    if (this._acceptBtn) {
+        this._acceptBtn.html(text);
+    }
 };
 
 ModalDialog.prototype.setRejectButtonText = function(text) {
     this._reject_button_text = text;
+};
+
+ModalDialog.prototype.hideRejectButton = function() {
+    this._rejectBtn.hide();
+};
+
+ModalDialog.prototype.hideAcceptButton = function() {
+    this._acceptButton.hide();
 };
 
 ModalDialog.prototype.setAcceptHandler = function(handler) {
@@ -932,26 +1535,47 @@ ModalDialog.prototype.setMessage = function(text, message_type) {
     this.prependContent(box.getElement());
 };
 
+ModalDialog.prototype.disableAcceptButton = function() {
+    this._acceptBtnEnabled = false;
+    if (this._acceptBtn) {
+        this._acceptBtn.prop('disabled', true);
+    }
+};
+
+ModalDialog.prototype.enableAcceptButton = function() {
+    this._acceptBtnEnabled = true;
+    if (this._acceptBtn) {
+        this._acceptBtn.prop('disabled', false);
+    }
+};
+
 ModalDialog.prototype.createDom = function() {
     this._element = this.makeElement('div')
     var element = this._element;
 
+    if (this._cssClass) {
+        element.addClass(this._cssClass);
+    }
+
     element.addClass('modal');
+    if (this._className) {
+        element.addClass(this._className);
+    }
 
     //1) create header
-    var header = this.makeElement('div')
-    header.addClass('modal-header');
-    element.append(header);
-
-    var close_link = this.makeElement('div');
-    close_link.addClass('close');
-    close_link.attr('data-dismiss', 'modal');
-    close_link.html('x');
-    header.append(close_link);
-
-    var title = this.makeElement('h3');
-    title.html(this._heading_text);
-    header.append(title);
+    if (this._headerEnabled) {
+        var header = this.makeElement('div')
+        header.addClass('modal-header');
+        element.append(header);
+        var close_link = this.makeElement('div');
+        close_link.addClass('close');
+        close_link.attr('data-dismiss', 'modal');
+        close_link.html('x');
+        header.append(close_link);
+        var title = this.makeElement('h3');
+        title.html(this._heading_text);
+        header.append(title);
+    }
 
     //2) create content
     var body = this.makeElement('div')
@@ -968,15 +1592,20 @@ ModalDialog.prototype.createDom = function() {
     element.append(footer);
 
     var accept_btn = this.makeElement('button');
-    accept_btn.addClass('btn btn-primary');
+    if (this._acceptBtnEnabled === false) {
+        accept_btn.prop('disabled', true);
+    }
+    accept_btn.addClass('submit');
     accept_btn.html(this._accept_button_text);
     footer.append(accept_btn);
+    this._acceptBtn = accept_btn;
 
     if (this._reject_button_text) {
         var reject_btn = this.makeElement('button');
-        reject_btn.addClass('btn cancel');
+        reject_btn.addClass('submit cancel');
         reject_btn.html(this._reject_button_text);
         footer.append(reject_btn);
+        this._rejectBtn = reject_btn;
     }
 
     //4) attach event handlers to the buttons
@@ -984,7 +1613,9 @@ ModalDialog.prototype.createDom = function() {
     if (this._reject_button_text) {
         setupButtonEventHandlers(reject_btn, this._reject_handler);
     }
-    setupButtonEventHandlers(close_link, this._reject_handler);
+    if (this._headerEnabled) {
+        setupButtonEventHandlers(close_link, this._reject_handler);
+    }
 
     this.hide();
 };
@@ -994,9 +1625,27 @@ ModalDialog.prototype.createDom = function() {
  */
 var FileUploadDialog = function() {
     ModalDialog.call(this);
-    self._post_upload_handler = undefined;
+    this._className = 'file-upload-dialog';
+    this._post_upload_handler = undefined;
+    this._fileType = 'image';
+    this._headerEnabled = false;
 };
 inherits(FileUploadDialog, ModalDialog);
+
+/**
+ * allowed values: 'image', 'attachment'
+ */
+FileUploadDialog.prototype.setFileType = function(fileType) {
+    this._fileType = fileType;
+};
+
+FileUploadDialog.prototype.getFileType = function() {
+    return this._fileType;
+};
+
+FileUploadDialog.prototype.setButtonText = function(text) {
+    this._fakeInput.val(text);
+};
 
 FileUploadDialog.prototype.setPostUploadHandler = function(handler) {
     this._post_upload_handler = handler;
@@ -1012,6 +1661,16 @@ FileUploadDialog.prototype.setInputId = function(id) {
 
 FileUploadDialog.prototype.getInputId = function() {
     return this._input_id;
+};
+
+FileUploadDialog.prototype.setErrorText = function(text) {
+    this.setLabelText(text);
+    this._label.addClass('error');
+};
+
+FileUploadDialog.prototype.setLabelText= function(text) {
+    this._label.html(text);
+    this._label.removeClass('error');
 };
 
 FileUploadDialog.prototype.setUrlInputTooltip = function(text) {
@@ -1037,30 +1696,113 @@ FileUploadDialog.prototype.resetInputs = function() {
     this._upload_input.val('');
 };
 
+FileUploadDialog.prototype.getInputElement = function() {
+    return $('#' + this.getInputId());
+};
+
+FileUploadDialog.prototype.installFileUploadHandler = function(handler) {
+    var upload_input = this.getInputElement();
+    upload_input.unbind('change');
+    //todo: fix this - make event handler reinstall work
+    upload_input.change(handler);
+};
+
 FileUploadDialog.prototype.show = function() {
     //hack around the ajaxFileUpload plugin
     FileUploadDialog.superClass_.show.call(this);
-    var upload_input = this._upload_input;
-    upload_input.unbind('change');
-    //todo: fix this - make event handler reinstall work
-    upload_input.change(this.getStartUploadHandler());
+    var handler = this.getStartUploadHandler();
+    this.installFileUploadHandler(handler);
+};
+
+FileUploadDialog.prototype.getUrlInputElement = function() {
+    return this._url_input.getElement();
+};
+
+/*
+ * argument startUploadHandler is very special it must
+ * be a function calling this one!!! Todo: see if there
+ * is a more civilized way to do this.
+ */
+FileUploadDialog.prototype.startFileUpload = function(startUploadHandler) {
+
+    var spinner = this._spinner;
+    var label = this._label;
+
+    spinner.ajaxStart(function(){ 
+        spinner.show();
+        label.hide();
+    });
+    spinner.ajaxComplete(function(){
+        spinner.hide();
+        label.show();
+    });
+
+    /* important!!! upload input must be loaded by id
+     * because ajaxFileUpload monkey-patches the upload form */
+    var uploadInput = this.getInputElement();
+    uploadInput.ajaxStart(function(){ uploadInput.hide(); });
+    uploadInput.ajaxComplete(function(){ uploadInput.show(); });
+
+    //var localFilePath = upload_input.val();
+
+    var me = this;
+
+    $.ajaxFileUpload({
+        url: askbot['urls']['upload'],
+        secureuri: false,//todo: check on https
+        fileElementId: this.getInputId(),
+        dataType: 'xml',
+        success: function (data, status) {
+
+            var fileURL = $(data).find('file_url').text();
+            var origFileName = $(data).find('orig_file_name').text();
+            var newStatus = interpolate(
+                                gettext('Uploaded file: %s'),
+                                [origFileName]
+                            );
+            /*
+            * hopefully a fix for the "fakepath" issue
+            * https://www.mediawiki.org/wiki/Special:Code/MediaWiki/83225
+            */
+            fileURL = fileURL.replace(/\w:.*\\(.*)$/,'$1');
+            var error = $(data).find('error').text();
+            if (error != ''){
+                me.setErrorText(error);
+            } else {
+                me.getUrlInputElement().attr('value', fileURL);
+                me.setLabelText(newStatus);
+                if (me.getFileType() === 'image') {
+                    var buttonText = gettext('Choose a different image');
+                } else {
+                    var buttonText = gettext('Choose a different file');
+                }
+                me.setButtonText(buttonText);
+            }
+
+            /* re-install this as the upload extension
+             * will remove the handler to prevent double uploading
+             * this hack is a manipulation around the 
+             * ajaxFileUpload jQuery plugin. */
+            me.installFileUploadHandler(startUploadHandler);
+        },
+        error: function (data, status, e) {
+            /* re-install this as the upload extension
+            * will remove the handler to prevent double uploading */
+            me.setErrorText(gettext('Oops, looks like we had an error. Sorry.'));
+            me.installFileUploadHandler(startUploadHandler);
+        }
+    });
+    return false;
 };
 
 FileUploadDialog.prototype.getStartUploadHandler = function(){
-    /* startUploadHandler is passed in to re-install the event handler
-     * which is removed by the ajaxFileUpload jQuery extension
-     */
-    var spinner = this._spinner;
-    var uploadInputId = this.getInputId();
-    var urlInput = this._url_input;
+    var me = this;
     var handler = function() {
-        var options = {
-            'spinner': spinner,
-            'uploadInputId': uploadInputId,
-            'urlInput': urlInput.getElement(),
-            'startUploadHandler': handler//pass in itself
-        };
-        return ajaxFileUpload(options);
+        /* the trick is that we need inside the function call
+         * to have a reference to itself
+         * in order to reinstall the handler later
+         * because ajaxFileUpload jquery extension might be destroying it */
+        return me.startFileUpload(handler);
     };
     return handler;
 };
@@ -1087,22 +1829,46 @@ FileUploadDialog.prototype.createDom = function() {
     superClass.createDom.call(this);
 
     var form = this.makeElement('form');
+    form.addClass('ajax-file-upload');
     form.css('margin-bottom', 0);
     this.prependContent(form);
 
-    // File upload button
+    // Browser native file upload field
     var upload_input = this.makeElement('input');
     upload_input.attr({
         id: this._input_id,
         type: 'file',
-        name: 'file-upload',
+        name: 'file-upload'
         //size: 26???
     });
     form.append(upload_input);
     this._upload_input = upload_input;
-    form.append($('<br/>'));
 
-    // The url input text box
+    var fakeInput = this.makeElement('input');
+    fakeInput.attr('type', 'button');
+    fakeInput.addClass('submit');
+    fakeInput.addClass('fake-file-input');
+    if (this._fileType === 'image') {
+        var buttonText = gettext('Choose an image to insert');
+    } else {
+        var buttonText = gettext('Choose a file to insert');
+    }
+    fakeInput.val(buttonText);
+    this._fakeInput = fakeInput;
+    form.append(fakeInput);
+
+    setupButtonEventHandlers(fakeInput, function() { upload_input.click() });
+
+    // Label which will also serve as status display
+    var label = this.makeElement('label');
+    label.attr('for', this._input_id);
+    var types = askbot['settings']['allowedUploadFileTypes'];
+    types = types.join(', ');
+    label.html(gettext('Allowed file types are:') + ' ' + types + '.');
+    form.append(label);
+    this._label = label;
+
+    // The url input text box, probably unused in fact
     var url_input = new TippedInput();
     url_input.setInstruction(this._url_input_tooltip || gettext('Or paste file url here'));
     var url_input_element = url_input.getElement();
@@ -1114,15 +1880,6 @@ FileUploadDialog.prototype.createDom = function() {
     //form.append($('<br/>'));
     this._url_input = url_input;
 
-    var label = this.makeElement('label');
-    label.attr('for', this._input_id);
-
-    var types = askbot['settings']['allowedUploadFileTypes'];
-    types = types.join(', ');
-    label.html(gettext('Allowed file types are:') + ' ' + types + '.');
-    form.append(label);
-    form.append($('<br/>'));
-
     /* //Description input box
     var descr_input = new TippedInput();
     descr_input.setInstruction(gettext('Describe the image here'));
@@ -1132,8 +1889,9 @@ FileUploadDialog.prototype.createDom = function() {
     this._description_input = descr_input;
     */
     var spinner = this.makeElement('img');
-    spinner.attr('src', mediaUrl('media/images/indicator.gif'));
+    spinner.attr('src', mediaUrl('media/images/ajax-loader.gif'));
     spinner.css('display', 'none');
+    spinner.addClass('spinner');
     form.append(spinner);
     this._spinner = spinner;
 
@@ -1407,28 +2165,30 @@ TwoStateToggle.prototype.decorate = function(element){
         }
     }
 
-    //set mouseover handler
-    var me = this;
-    element.mouseover(function(){
-        var is_on = me.isOn();
-        if (is_on){
-            me.setState('off-prompt');
-        } else {
-            me.setState('on-prompt');
-        }
-        //element.css('background-color', 'red');
-        return false;
-    });
-    element.mouseout(function(){
-        var is_on = me.isOn();
-        if (is_on){
-            me.setState('on-state');
-        } else {
-            me.setState('off-state');
-        }
-        //element.css('background-color', 'white');
-        return false;
-    });
+    //set mouseover handler only for non-checkbox version
+    if (this.isCheckBox() === false) {
+        var me = this;
+        element.mouseover(function(){
+            var is_on = me.isOn();
+            if (is_on){
+                me.setState('off-prompt');
+            } else {
+                me.setState('on-prompt');
+            }
+            //element.css('background-color', 'red');
+            return false;
+        });
+        element.mouseout(function(){
+            var is_on = me.isOn();
+            if (is_on){
+                me.setState('on-state');
+            } else {
+                me.setState('off-state');
+            }
+            //element.css('background-color', 'white');
+            return false;
+        });
+    }
 
     setupButtonEventHandlers(element, this.getHandler());
 };
@@ -1767,11 +2527,15 @@ SelectBox.prototype.setSelectHandler = function(handler) {
     this._select_handler = handler;
 };
 
+SelectBox.prototype.getSelectHandlerInternal = function() {
+    return this._select_handler;
+};
+
 SelectBox.prototype.getSelectHandler = function(item) {
     var me = this;
-    var handler = this._select_handler;
     return function(){
         me.selectItem(item);
+        var handler = me.getSelectHandlerInternal();
         handler(item.getData());
     };
 };
@@ -1805,8 +2569,18 @@ SelectBox.prototype.createDom = function() {
 var GroupDropdown = function(groups){
     WrappedElement.call(this);
     this._group_list = groups; 
+};
+inherits(GroupDropdown, WrappedElement);
+
+GroupDropdown.prototype.createDom =  function(){
+    this._element = this.makeElement('ul');
+    this._element.attr('class', 'dropdown-menu');
+    this._element.attr('id', 'groups-dropdown');
+    this._element.attr('role', 'menu');
+    this._element.attr('aria-labelledby', 'navGroups');
+
     this._input_box = new TippedInput();
-    this._input_box.setInstruction('group name');
+    this._input_box.setInstruction(gettext('group name'));
     this._input_box.createDom();
     this._input_box_element = this._input_box.getElement();
     this._input_box_element.attr('class', 'group-name');
@@ -1814,116 +2588,129 @@ var GroupDropdown = function(groups){
     this._add_link = this.makeElement('a');
     this._add_link.attr('href', '#');
     this._add_link.attr('class', 'group-name');
-    this._add_link.text('add new group');
-};
-inherits(GroupDropdown, WrappedElement);
+    this._add_link.text(gettext('add new group'));
 
-GroupDropdown.prototype.createDom =  function(){
-  this._element = this.makeElement('ul');
-  this._element.attr('class', 'dropdown-menu');
-  this._element.attr('id', 'groups-dropdown');
-  this._element.attr('role', 'menu');
-  this._element.attr('aria-labelledby', 'navGroups');
-
-  for (i=0; i<this._group_list.length; i++){
-    li_element = this.makeElement('li');
-    a_element = this.makeElement('a');
-    a_element.text(this._group_list[i].name);
-    a_element.attr('href', this._group_list[i].link);
-    a_element.attr('class', 'group-name');
-    li_element.append(a_element);
-    this._element.append(li_element);
-  }
-};
-
-GroupDropdown.prototype.decorate = function(element){
-  this._element = element; 
-  this._element.attr('class', 'dropdown-menu');
-  this._element.attr('id', 'groups-dropdown');
-  this._element.attr('role', 'menu');
-  this._element.attr('aria-labelledby', 'navGroups');
-
-  for (i=0; i<this._group_list.length; i++){
-    li_element = this.makeElement('li');
-    a_element = this.makeElement('a');
-    a_element.text(this._group_list[i].name);
-    a_element.attr('href', this._group_list[i].link);
-    a_element.attr('class', 'group-name');
-    li_element.append(a_element);
-    this._element.append(li_element);
-  }
-};
-
-GroupDropdown.prototype.insertGroup = function(group_name, url){
-    var new_group_li = this.makeElement('li');
-    new_group_a = this.makeElement('a');
-    new_group_a.attr('href', url);
-    new_group_a.attr('class', 'group-name');
-    new_group_a.text(group_name);
-    new_group_li.append(new_group_a);
-    links_array = this._element.find('a')
-    for (i=1; i < links_array.length; i++){
-        var listedName = links_array[i].text;
-        var cleanedListedName = listedName.toLowerCase();
-        var cleanedNewName = group_name.toLowerCase()
-        if (listedName < newName) {
-            if (i == links_array.length - 1){
-                new_group_li.insertAfter(this._element.find('li')[i-1])
-                break;
-            } else {
-                continue;
-            }
-        } else if (cleanedNewName === cleanedNewName) {
-            var message = interpolate(gettext(
-                    'Group %(name)s already exists. Group names are case-insensitive.'
-                ), {'name': listedName}, true
-            );
-            notify.show(message);
-            return;
-        } else {
-            new_group_li.insertAfter(this._element.find('li')[i-1])
-            break;
-        }
+    for (var i=0; i<this._group_list.length; i++){
+        var li = this.makeElement('li');
+        var a = this.makeElement('a');
+        a.text(this._group_list[i].name);
+        a.attr('href', this._group_list[i].link);
+        a.attr('class', 'group-name');
+        li.append(a);
+        this._element.append(li);
+    }
+    if (askbot['data']['userIsAdmin']) {
+        this.enableAddGroups();
     }
 };
 
-GroupDropdown.prototype._add_group_handler = function(group_name){
-  var group_name = this._input_box_element.val();
-  self = this;
-  if (!group_name){
-    return;
-  }
+/**
+ * inserts a link to group with a given url to the group page
+ * and name
+ */
+GroupDropdown.prototype.insertGroup = function(group_name, url){
 
-  $.ajax({
-    type: 'POST',
-    url: askbot['urls']['add_group'],
-    data: {group: group_name},
-    success: function(data){
-       if (data.success){
-         self.insertGroup(data.group_name, data.url);
-         self._input_box_element.hide();
-         self._add_link.show();
-         return true; 
-       } else{
-         return false;
-       }
-     },
-     error: function(){console.log('error');}
-  });
+    //1) take out first and last list elements: 
+    // everyone and the "add group" item
+    var list = this._element.children();
+    var everyoneGroup = list.first().detach();
+    var groupAdder = list.last().detach();
+    var divider = this._element.find('.divider').detach();
+
+    //2) append group link into the list
+    var li = this.makeElement('li');
+    var a = this.makeElement('a');
+    a.attr('href', url);
+    a.attr('class', 'group-name');
+    a.text(group_name);
+    li.append(a);
+    li.hide();
+    this._element.append(li);
+
+    //3) sort rest of the list alphanumerically
+    sortChildNodes(
+        this._element,
+        function(a, b) {
+            var valA = $(a).find('a').text().toLowerCase();
+            var valB = $(b).find('a').text().toLowerCase();
+            return (valA < valB) ? -1: (valA > valB) ? 1: 0;
+        }
+    );
+
+    //a dramatic effect
+    li.fadeIn();
+
+    //4) reinsert the first and last elements of the list:
+    this._element.prepend(everyoneGroup);
+    this._element.append(divider);
+    this._element.append(groupAdder);
+};
+
+GroupDropdown.prototype.setState = function(state) {
+    if (state === 'display') {
+        this._input_box_element.hide();
+        this._add_link.show();
+    }
+};
+
+GroupDropdown.prototype.hasGroup = function(groupName) {
+    var items = this._element.find('li');
+    for (var i=1; i < items.length - 1; i++) {
+        var cGroupName = $(items[i]).find('a').text();
+        if (cGroupName.toLowerCase() === groupName.toLowerCase()) {
+            return true;
+        }
+    }
+    return false;
+};
+
+GroupDropdown.prototype._add_group_handler = function(group_name){
+    var group_name = this._input_box_element.val();
+    var me = this;
+    if (!group_name){
+        return;
+    }
+
+    $.ajax({
+        type: 'POST',
+        url: askbot['urls']['add_group'],
+        data: {group: group_name},
+        success: function(data){
+            if (data['success']){
+                var groupName = data['group_name'];
+                if (me.hasGroup(groupName)) {
+                    var message = interpolate(gettext(
+                            'Group %(name)s already exists. Group names are case-insensitive.'
+                        ), {'name': groupName}, true
+                    );
+                    notify.show(message);
+                    return false;
+                } else {
+                    me.insertGroup(data['group_name'], data['url']);
+                    me.setState('display');
+                    return true; 
+                }
+            } else{
+                notify.show(data['message']);
+                return false;
+            }
+        },
+        error: function(){console.log('error');}
+    });
 };
 
 GroupDropdown.prototype.enableAddGroups = function(){
     var self = this;
     this._add_link.click(function(){ 
-      self._add_link.hide();
-      self._input_box_element.show(); 
-      self._input_box_element.focus(); 
+        self._add_link.hide();
+        self._input_box_element.show(); 
+        self._input_box_element.focus(); 
     });
     this._input_box_element.keydown(function(event){
-      if (event.which == 13 || event.keyCode==13){
-        self._add_group_handler(); 
-        self._input_box_element.val('');
-      }
+        if (event.which == 13 || event.keyCode==13){
+            self._add_group_handler(); 
+            self._input_box_element.val('');
+        }
     });
 
     var divider = this.makeElement('li');
@@ -2064,10 +2851,9 @@ Tag.prototype.createDom = function(){
     }
     this._inner_element.addClass('tag tag-right');
     this._inner_element.attr('rel', 'tag');
-    if (this._title === null){
-        this.setTitle(
-            interpolate(gettext("see questions tagged '%s'"), [this.getName()])
-        );
+    if (this._title === null) {
+        var name = this.getName();
+        this.setTitle(interpolate(gettext("see questions tagged '%s'"), [name,]));
     }
     this._inner_element.attr('title', this._title);
     this._inner_element.html(this.getDisplayTagName());
@@ -2089,6 +2875,149 @@ Tag.prototype.createDom = function(){
         del_icon_elem.text('x'); // HACK by Tomasz
         this._element.append(del_icon_elem);
     }
+};
+
+var PermsHoverCard = function() {
+    WrappedElement.call(this);
+    this._isLoaded = false;
+};
+inherits(PermsHoverCard, WrappedElement);
+
+PermsHoverCard.prototype.setContent = function(data) {
+    this._element.html(data['html']);
+};
+
+PermsHoverCard.prototype.setTrigger = function(trigger) {
+    this._trigger = trigger;
+};
+
+PermsHoverCard.prototype.setPosition = function() {
+    var trigger = this._trigger.getElement();
+    var coors = trigger.offset();
+    var height = trigger.outerHeight();
+    var triangle = this._element.find('.triangle')
+    var triangleHeight = triangle.outerHeight();
+    this._element.css({
+        'top': coors.top + height + triangleHeight,
+        'left': coors.left
+    });
+};
+
+PermsHoverCard.prototype.setUrl = function(url) {
+    this._url = url;
+};
+
+PermsHoverCard.prototype.startLoading = function(onLoad) {
+    var me = this;
+    $.ajax({
+        type: 'GET',
+        dataType: 'json',
+        cache: false,
+        url: this._url,
+        success: function(data) {
+            if (data['success']) {
+                me.setContent(data);
+                me.setPosition();
+                onLoad();
+                me.setIsLoaded();
+            } else {
+                notify.show(data['message']);
+            }
+        }
+    });
+};
+
+PermsHoverCard.prototype.isLoaded = function() {
+    return this._isLoaded;
+};
+
+PermsHoverCard.prototype.setIsLoaded = function() {
+    this._isLoaded = true;
+};
+
+PermsHoverCard.prototype.getOpenHandler = function() {
+    var me = this;
+    return function() {
+        me.clearCancelOpenTimeout();
+        if (me.isLoaded()) {
+            me.getElement().show();
+        } else {
+            var onload = function() {
+                me.getElement().show();
+            }
+            me.startLoading(onload);
+        }
+    };
+};
+
+PermsHoverCard.prototype.setCancelOpenTimoutId = function(timeoutId) {
+    this._cancelOpenTimeoutId = timeoutId;
+};
+
+PermsHoverCard.prototype.clearCancelOpenTimeout = function() {
+    var timeout = this._cancelOpenTimeoutId;
+    if (timeout) {
+        clearTimeout(timeout);
+    }
+};
+
+PermsHoverCard.prototype.getCloseHandler = function() {
+    var me = this;
+    return function() {
+        var element = me.getElement();
+        //start timeout to close
+        var timeout = setTimeout(function() {
+            element.hide();
+            //element.fadeOut('fast');
+        }, 200);
+        me.setCancelOpenTimoutId(timeout);
+    };
+};
+
+PermsHoverCard.prototype.getImmediateCloseHandler = function() {
+    var me = this;
+    return function() {
+        me.getElement().hide();
+    };
+};
+
+PermsHoverCard.prototype.getKeepHandler = function() {
+    var me = this;
+    return function() {
+        me.clearCancelOpenTimeout();
+    };
+};
+
+PermsHoverCard.prototype.createDom = function() {
+    var element = this.makeElement('div');
+    this._element = element;
+    element.addClass('hovercard');
+    element.hover(
+        this.getKeepHandler(),
+        this.getCloseHandler()
+    );
+    this._element.hide();
+};
+
+var ShowPermsTrigger = function() {
+    WrappedElement.call(this);
+};
+inherits(ShowPermsTrigger, WrappedElement);
+
+ShowPermsTrigger.prototype.decorate = function(element) {
+    this._element = element;
+    var hoverCard = new PermsHoverCard();
+    this._hoverCard = hoverCard;
+    $('body').append(hoverCard.getElement());
+
+    hoverCard.setTrigger(this);
+    hoverCard.setUrl(element.data('url'));
+
+    var onEnter = hoverCard.getOpenHandler();
+    var onExit = hoverCard.getCloseHandler();
+    element.hover(onEnter, onExit);
+    var onClose = hoverCard.getImmediateCloseHandler();
+    $('body').click(onClose);
 };
 
 //Search Engine Keyword Highlight with Javascript
@@ -2213,6 +3142,8 @@ var AutoCompleter = function(options) {
      * @private
      */
     this.finishOnBlur_ = true;
+
+    this._isRunning = false;
 
     this.options.minChars = parseInt(this.options.minChars, 10);
     if (isNaN(this.options.minChars) || this.options.minChars < 1) {
@@ -2442,7 +3373,13 @@ AutoCompleter.prototype.activate = function() {
 };
 
 AutoCompleter.prototype.activateNow = function() {
+    if (this._isRunning) {
+        return;
+    }
     var value = this.getValue();
+    if (value.length === 0) {
+        this.finish();
+    }
     if (value !== this.lastProcessedValue_ && value !== this.lastSelectedValue_) {
         if (value.length >= this.options.minChars) {
             this.active_ = true;
@@ -2450,6 +3387,10 @@ AutoCompleter.prototype.activateNow = function() {
             this.fetchData(value);
         }
     }
+};
+
+AutoCompleter.prototype.setIsRunning = function(isRunning) {
+    this._isRunning = isRunning;
 };
 
 AutoCompleter.prototype.fetchData = function(value) {
@@ -2482,11 +3423,21 @@ AutoCompleter.prototype.fetchRemoteData = function(filter, callback) {
         };
         $.ajax({
             url: this.makeUrl(filter),
-            success: ajaxCallback,
+            success: function(data) {
+                ajaxCallback(data);
+                self.setIsRunning(false);
+                //if query changed - rerun the search immediately
+                var newQuery = self.getValue();
+                if (newQuery && newQuery !== filter) {
+                    self.activateNow();
+                }
+            },
             error: function() {
                 ajaxCallback(false);
+                self.setIsRunning(false);
             }
         });
+        self.setIsRunning(true);
     }
 };
 
@@ -2792,7 +3743,7 @@ AutoCompleter.prototype.selectItem = function($li) {
  * @param {string} symbol - a single char string
  */
 AutoCompleter.prototype.isContentChar = function(symbol){
-    if (symbol.match(this.options['stopCharRegex'])){
+    if (this.options['stopCharRegex'] && symbol.match(this.options['stopCharRegex'])){
         return false;
     } else if (symbol === this.options['multipleSeparator']){
         return false;
@@ -2810,6 +3761,9 @@ AutoCompleter.prototype.isContentChar = function(symbol){
  * autocompletable word
  */
 AutoCompleter.prototype.getValue = function(){
+    if (this._element === undefined) {
+        return '';
+    }
     var sel = this._element.getSelection();
     var text = this._element.val();
     var pos = sel.start;//estimated start
@@ -2859,6 +3813,17 @@ AutoCompleter.prototype.displayValue = function(value, data) {
     } else {
         return value;
     }
+};
+
+AutoCompleter.prototype.clear = function() {
+    this._element.val('');
+    this._results.hide();
+    this.lastKeyPressed_ = null;
+    this.lastProcessedValue_ = null;
+    if (this._keyTimeout_) {
+        clearTimeout(this._keyTimeout);
+    }
+    this._active = false;
 };
 
 AutoCompleter.prototype.finish = function() {
@@ -3071,22 +4036,24 @@ AutoCompleter.prototype.setCaret = function(pos) {
     } else if (days == 1) {
         return gettext('yesterday')
     } else if (minutes >= 60) {
+        var wholeHours = Math.floor(hours);
         return interpolate(
                     ngettext(
                         '%s hour ago',
                         '%s hours ago',
-                        hours
+                        wholeHours
                     ),
-                    [Math.floor(hours),]
+                    [wholeHours,]
                 )
     } else if (seconds > 90){
+        var wholeMinutes = Math.floor(minutes);
         return interpolate(
                     ngettext(
                         '%s min ago',
                         '%s mins ago',
-                        minutes
+                        wholeMinutes
                     ),
-                    [Math.floor(minutes),]
+                    [wholeMinutes,]
                 )
     } else {
         return gettext('just now')

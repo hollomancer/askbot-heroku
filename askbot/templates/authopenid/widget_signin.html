@@ -14,20 +14,6 @@
 {% if have_buttons or view_subtype == 'email_sent' %}
     <h1 class="section-title">{{page_title}}</h1>
 {% endif %}
-    {% if answer %}
-        <div class="message">
-        {% trans title=answer.question.title|escape, summary=answer.summary|escape %}
-        Your answer to {{title}} {{summary}} will be posted once you log in
-        {% endtrans %}
-        </div>
-    {% endif %}
-    {% if question %}
-        <div class="message">
-        {% trans title=question.title|escape, summary=question.summary|escape %}Your question 
-        {{title}} {{summary}} will be posted once you log in
-        {% endtrans %}
-        </div>
-    {% endif %}
     <p id='login-intro'>
     {% if view_subtype == 'default' and have_buttons %}
         {% trans %}Choose your favorite service below to sign in using secure OpenID or similar technology. Your external service password always stays confidential and you don't have to rememeber or create another one.{% endtrans %}
@@ -115,7 +101,7 @@
                     </tr>
                 </table>
                 <p id="local_login_buttons">
-                    <input class="submit-b" name="login_with_password" type="submit" value="{% trans %}Sign in{% endtrans %}" />
+                    <input name="login_with_password" type="submit" value="{% trans %}Sign in{% endtrans %}" />
                     {% if settings.USE_LDAP_FOR_PASSWORD_LOGIN == False %}
                     <a class="create-password-account" style="vertical-align:middle" href="{% url user_signup_with_password %}?login_provider=local">{% trans %}Create a password-protected account{% endtrans %}</a>
                     {% endif %}
@@ -145,7 +131,7 @@
                     </tr>
                 </table>
                 <p id="local_login_buttons">
-                    <input class="submit-b" name="change_password" type="submit" value="{% trans %}Change password{% endtrans %}" />
+                    <input name="change_password" type="submit" value="{% trans %}Change password{% endtrans %}" />
                 </p>
             {% endif %}
         </fieldset>
@@ -165,7 +151,6 @@
             <tr>
                 <th>{% trans %}provider{% endtrans %}</th>
                 <th>{% trans %}last used{% endtrans %}</th>
-                <th>{% trans %}delete, if you like{% endtrans %}</th>
             </tr>
             {% for login_method in existing_login_methods %}
             <tr class="ab-provider-row">
@@ -199,9 +184,9 @@
             <p class="hint">
                 <span class="text">
                 {% if view_subtype == 'bad_key' %}
-                    {% trans %}Please, enter your email address below and obtain a new key{% endtrans %}
+                    {% trans %}Enter your email address below and obtain a new key{% endtrans %}
                 {% else %}
-                    {% trans %}Please, enter your email address below to recover your account{% endtrans %}
+                    {% trans %}Enter your email address below to recover your account{% endtrans %}
                 {% endif %}
                 </span>
                 <span style="display:none" class="link"> - <a href="#">{% trans %}recover your account via email{% endtrans %}</a></span>
@@ -212,7 +197,6 @@
                 {% endif %}
                 {{ account_recovery_form.email }}
                 <input
-                    class="submit-b"
                     type="submit"
                     {% if view_subtype == 'bad_key' %}
                     value="{% trans %}Send a new recovery key{% endtrans %}"

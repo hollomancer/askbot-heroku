@@ -15,6 +15,9 @@ nbproject
 *.iml
 lint
 env
+.vagrant
+/Vagrantfile
+/custom_settings
 /static
 django
 lamson

@@ -6,7 +6,6 @@ import sys
 from django.conf import settings
 from django.core.urlresolvers import reverse
 from django.utils import simplejson
-from django.utils.translation import get_language
 
 import askbot
 from askbot import api
@@ -16,6 +15,8 @@ from askbot.conf import settings as askbot_settings
 from askbot.skins.loaders import get_skin
 from askbot.utils import url_utils
 from askbot.utils.slug import slugify
+from askbot.utils.html import site_url
+from askbot.utils.translation import get_language
 
 def application_settings(request):
     """The context processor function"""
@@ -36,6 +37,7 @@ def application_settings(request):
             settings.ASKBOT_ALLOWED_UPLOAD_FILE_TYPES
     my_settings['ASKBOT_URL'] = settings.ASKBOT_URL
     my_settings['STATIC_URL'] = settings.STATIC_URL
+    my_settings['IP_MODERATION_ENABLED'] = getattr(settings, 'ASKBOT_IP_MODERATION_ENABLED', False)
     my_settings['ASKBOT_CSS_DEVEL'] = getattr(
                                         settings,
                                         'ASKBOT_CSS_DEVEL',
@@ -46,18 +48,39 @@ def application_settings(request):
                                         'ASKBOT_USE_LOCAL_FONTS',
                                         False
                                     )
+    my_settings['CSRF_COOKIE_NAME'] = settings.CSRF_COOKIE_NAME
     my_settings['DEBUG'] = settings.DEBUG
     my_settings['USING_RUNSERVER'] = 'runserver' in sys.argv
     my_settings['ASKBOT_VERSION'] = askbot.get_version()
     my_settings['LOGIN_URL'] = url_utils.get_login_url()
     my_settings['LOGOUT_URL'] = url_utils.get_logout_url()
+
+    if my_settings['EDITOR_TYPE'] == 'tinymce':
+        tinymce_plugins = settings.TINYMCE_DEFAULT_CONFIG.get('plugins', '').split(',')
+        my_settings['TINYMCE_PLUGINS'] = map(lambda v: v.strip(), tinymce_plugins)
+    else:
+        my_settings['TINYMCE_PLUGINS'] = [];
+
     my_settings['LOGOUT_REDIRECT_URL'] = url_utils.get_logout_redirect_url()
     my_settings['USE_ASKBOT_LOGIN_SYSTEM'] = 'askbot.deps.django_authopenid' \
         in settings.INSTALLED_APPS
+    
+    current_language = get_language()
+
+    #for some languages we will start searching for shorter words
+    if current_language == 'ja':
+        #we need to open the search box and show info message about
+        #the japanese lang search
+        min_search_word_length = 1
+    else:   
+        min_search_word_length = my_settings['MIN_SEARCH_WORD_LENGTH']
+
     context = {
-        'current_language_code': get_language(),
+        'base_url': site_url(''),
+        'min_search_word_length': min_search_word_length,
+        'current_language_code': current_language,
         'settings': my_settings,
-        'skin': get_skin(request),
+        'skin': get_skin(),
         'moderation_items': api.get_info_on_moderation_items(request.user),
         'noscript_url': const.DEPENDENCY_URLS['noscript'],
     }

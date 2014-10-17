@@ -274,10 +274,16 @@ function pickedTags(){
             });
         }
 
+        var tagSettings = JSON.parse(askbot['settings']['tag_editor']);
         var clean_tagnames = [];
         $.each(tagnames, function(idx, tagname){
             if (!(tagname in to_target)){
-                clean_tagnames.push(tagname);
+                try {
+                    cleanTag(tagname, tagSettings);
+                    clean_tagnames.push(tagname);
+                } catch (e) {
+                    alert(e);
+                }
             }
         });
 
@@ -372,7 +378,6 @@ function pickedTags(){
             setupTagFilterControl('email');
             var ac = new AutoCompleter({
                 url: askbot['urls']['get_tag_list'],
-                preloadData: true,
                 minChars: 1,
                 useCache: true,
                 matchInside: true,

@@ -15,6 +15,7 @@ import operator
 import urllib
 
 from django.db.models import Count
+from django.db.models import Q
 from django.conf import settings as django_settings
 from django.contrib.auth.decorators import login_required
 from django.core import exceptions as django_exceptions
@@ -25,14 +26,19 @@ from django.shortcuts import get_object_or_404
 from django.shortcuts import render
 from django.http import HttpResponse, HttpResponseForbidden
 from django.http import HttpResponseRedirect, Http404
+from django.utils.translation import get_language
+from django.utils.translation import string_concat
 from django.utils.translation import ugettext as _
+from django.utils.translation import ungettext
 from django.utils import simplejson
+from django.utils.html import strip_tags as strip_all_tags
 from django.views.decorators import csrf
 
 from askbot.utils.slug import slugify
 from askbot.utils.html import sanitize_html
 from askbot.mail import send_mail
 from askbot.utils.http import get_request_info
+from askbot.utils import decorators
 from askbot.utils import functions
 from askbot import forms
 from askbot import const
@@ -60,6 +66,24 @@ def owner_or_moderator_required(f):
         return f(request, profile_owner, context)
     return wrapped_func
 
+@decorators.ajax_only
+def clear_new_notifications(request):
+    """clears all new notifications for logged in user"""
+    user = request.user
+    if user.is_anonymous():
+        raise django_exceptions.PermissionDenied
+
+    activity_types = const.RESPONSE_ACTIVITY_TYPES_FOR_DISPLAY
+    activity_types += (
+        const.TYPE_ACTIVITY_MENTION,
+    )
+    memo_set = models.ActivityAuditStatus.objects.filter(
+        activity__activity_type__in=activity_types,
+        user=user
+    )
+    memo_set.update(status = models.ActivityAuditStatus.STATUS_SEEN)
+    user.update_response_counts()
+
 def show_users(request, by_group=False, group_id=None, group_slug=None):
     """Users view, including listing of users by group"""
     if askbot_settings.GROUPS_ENABLED and not by_group:
@@ -84,11 +108,10 @@ def show_users(request, by_group=False, group_id=None, group_slug=None):
             else:
                 try:
                     group = models.Group.objects.get(id = group_id)
-                    group_email_moderation_enabled = \
-                        (
-                            askbot_settings.GROUP_EMAIL_ADDRESSES_ENABLED \
-                            and askbot_settings.ENABLE_CONTENT_MODERATION
-                        )
+                    group_email_moderation_enabled = (
+                        askbot_settings.GROUP_EMAIL_ADDRESSES_ENABLED \
+                        and askbot_settings.CONTENT_MODERATION_MODE == 'premoderation'
+                    )
                     user_acceptance_level = group.get_openness_level_for_user(
                                                                     request.user
                                                                 )
@@ -163,11 +186,8 @@ def show_users(request, by_group=False, group_id=None, group_slug=None):
     paginator_data = {
         'is_paginated' : is_paginated,
         'pages': objects_list.num_pages,
-        'page': page,
-        'has_previous': users_page.has_previous(),
-        'has_next': users_page.has_next(),
-        'previous': users_page.previous_page_number(),
-        'next': users_page.next_page_number(),
+        'current_page_number': page,
+        'page_object': users_page,
         'base_url' : base_url
     }
     paginator_context = functions.setup_paginator(paginator_data) #
@@ -213,13 +233,14 @@ def user_moderate(request, subject, context):
 
     user_rep_changed = False
     user_status_changed = False
+    user_status_changed_message = _('User status changed')
     message_sent = False
     email_error_message = None
 
     user_rep_form = forms.ChangeUserReputationForm()
     send_message_form = forms.SendMessageForm()
     if request.method == 'POST':
-        if 'change_status' in request.POST:
+        if 'change_status' in request.POST or 'hard_block' in request.POST:
             user_status_form = forms.ChangeUserStatusForm(
                                                     request.POST,
                                                     moderator = moderator,
@@ -227,6 +248,11 @@ def user_moderate(request, subject, context):
                                                 )
             if user_status_form.is_valid():
                 subject.set_status( user_status_form.cleaned_data['user_status'] )
+                if user_status_form.cleaned_data['delete_content'] == True:
+                    num_deleted = request.user.delete_all_content_authored_by_user(subject)
+                    if num_deleted:
+                        num_deleted_message = ungettext('%d post deleted', '%d posts deleted', num_deleted) % num_deleted
+                        user_status_changed_message = string_concat(user_status_changed_message, ', ', num_deleted_message)
             user_status_changed = True
         elif 'send_message' in request.POST:
             send_message_form = forms.SendMessageForm(request.POST)
@@ -283,7 +309,6 @@ def user_moderate(request, subject, context):
         'active_tab': 'users',
         'page_class': 'user-profile-page',
         'tab_name': 'moderation',
-        'tab_description': _('moderate this user'),
         'page_title': _('moderate user'),
         'change_user_status_form': user_status_form,
         'change_user_reputation_form': user_rep_form,
@@ -291,7 +316,8 @@ def user_moderate(request, subject, context):
         'message_sent': message_sent,
         'email_error_message': email_error_message,
         'user_rep_changed': user_rep_changed,
-        'user_status_changed': user_status_changed
+        'user_status_changed': user_status_changed,
+        'user_status_changed_message': user_status_changed_message
     }
     context.update(data)
     return render(request, 'user_profile/user_moderate.html', context)
@@ -304,6 +330,15 @@ def set_new_email(user, new_email, nomessage=False):
         user.save()
         #if askbot_settings.EMAIL_VALIDATION == True:
         #    send_new_email_key(user,nomessage=nomessage)
+
+
+def need_to_invalidate_post_caches(user, form):
+    """a utility function for the edit user profile view"""
+    new_country = (form.cleaned_data.get('country') != user.country)
+    new_show_country = (form.cleaned_data.get('show_country') != user.show_country)
+    new_username = (form.cleaned_data.get('username') != user.username)
+    return (new_country or new_show_country or new_username)
+
 
 @login_required
 @csrf.csrf_protect
@@ -321,15 +356,30 @@ def edit_user(request, id):
                 new_email = sanitize_html(form.cleaned_data['email'])
                 set_new_email(user, new_email)
 
+            prev_username = user.username
             if askbot_settings.EDITABLE_SCREEN_NAME:
-                new_username = sanitize_html(form.cleaned_data['username'])
+                new_username = strip_all_tags(form.cleaned_data['username'])
                 if user.username != new_username:
                     group = user.get_personal_group()
                     user.username = new_username
                     group.name = format_personal_group_name(user)
                     group.save()
 
-            user.real_name = sanitize_html(form.cleaned_data['realname'])
+            #Maybe we need to clear post caches, b/c
+            #author info may need to be updated on posts and thread summaries
+            if need_to_invalidate_post_caches(user, form):
+                #get threads where users participated
+                thread_ids = models.Post.objects.filter(
+                                    Q(author=user) | Q(last_edited_by=user)
+                                ).values_list(
+                                    'thread__id', flat=True
+                                ).distinct()
+                threads = models.Thread.objects.filter(id__in=thread_ids)
+                for thread in threads:
+                    #for each thread invalidate cache keys for posts, etc
+                    thread.invalidate_cached_data(lazy=True)
+
+            user.real_name = strip_all_tags(form.cleaned_data['realname'])
             user.website = sanitize_html(form.cleaned_data['website'])
             user.location = sanitize_html(form.cleaned_data['city'])
             user.date_of_birth = form.cleaned_data.get('birthday', None)
@@ -363,13 +413,13 @@ def user_stats(request, user, context):
     if request.user != user:
         question_filter['is_anonymous'] = False
 
-    if askbot_settings.ENABLE_CONTENT_MODERATION:
+    if askbot_settings.CONTENT_MODERATION_MODE == 'premoderation':
         question_filter['approved'] = True
 
     #
     # Questions
     #
-    questions = user.posts.get_questions(
+    questions_qs = user.posts.get_questions(
                     user=request.user
                 ).filter(
                     **question_filter
@@ -377,30 +427,33 @@ def user_stats(request, user, context):
                     '-points', '-thread__last_activity_at'
                 ).select_related(
                     'thread', 'thread__last_activity_by'
-                )[:100]
+                )
 
-    #added this if to avoid another query if questions is less than 100
-    if len(questions) < 100:
-        question_count = len(questions)
-    else:
-        question_count = user.posts.get_questions().filter(**question_filter).count()
+    q_paginator = Paginator(questions_qs, const.USER_POSTS_PAGE_SIZE)
+    questions = q_paginator.page(1).object_list
+    question_count = q_paginator.count
 
+    q_paginator_context = functions.setup_paginator({
+                    'is_paginated' : (question_count > const.USER_POSTS_PAGE_SIZE),
+                    'pages': q_paginator.num_pages,
+                    'current_page_number': 1,
+                    'page_object': q_paginator.page(1),
+                    'base_url' : '?' #this paginator will be ajax
+                })
     #
     # Top answers
     #
-    top_answers = user.posts.get_answers(
-        request.user
-    ).filter(
-        deleted=False,
-        thread__posts__deleted=False,
-        thread__posts__post_type='question',
-    ).select_related(
-        'thread'
-    ).order_by(
-        '-points', '-added_at'
-    )[:100]
+    a_paginator = user.get_top_answers_paginator(request.user)
+    top_answers = a_paginator.page(1).object_list
+    top_answer_count = a_paginator.count
 
-    top_answer_count = len(top_answers)
+    a_paginator_context = functions.setup_paginator({
+                    'is_paginated' : (top_answer_count > const.USER_POSTS_PAGE_SIZE),
+                    'pages': a_paginator.num_pages,
+                    'current_page_number': 1,
+                    'page_object': a_paginator.page(1),
+                    'base_url' : '?' #this paginator will be ajax
+                })
     #
     # Votes
     #
@@ -415,7 +468,10 @@ def user_stats(request, user, context):
     # INFO: There's bug in Django that makes the following query kind of broken (GROUP BY clause is problematic):
     #       http://stackoverflow.com/questions/7973461/django-aggregation-does-excessive-group-by-clauses
     #       Fortunately it looks like it returns correct results for the test data
-    user_tags = models.Tag.objects.filter(threads__posts__author=user).distinct().\
+    user_tags = models.Tag.objects.filter(
+                                    threads__posts__author=user,
+                                    language_code=get_language()
+                                ).distinct().\
                     annotate(user_tag_usage_count=Count('threads')).\
                     order_by('-user_tag_usage_count')[:const.USER_VIEW_DATA_SIZE]
     user_tags = list(user_tags) # evaluate
@@ -502,14 +558,15 @@ def user_stats(request, user, context):
         'page_class': 'user-profile-page',
         'support_custom_avatars': ('avatar' in django_settings.INSTALLED_APPS),
         'tab_name' : 'stats',
-        'tab_description' : _('user profile'),
         'page_title' : _('user profile overview'),
-        'user_status_for_display': user.get_status_display(soft = True),
         'questions' : questions,
         'question_count': question_count,
+        'q_paginator_context': q_paginator_context,
 
         'top_answers': top_answers,
         'top_answer_count': top_answer_count,
+        'a_paginator_context': a_paginator_context,
+        'page_size': const.USER_POSTS_PAGE_SIZE,
 
         'up_votes' : up_votes,
         'down_votes' : down_votes,
@@ -528,6 +585,13 @@ def user_stats(request, user, context):
     }
     context.update(data)
 
+    extra_context = view_context.get_extra(
+                                'ASKBOT_USER_PROFILE_PAGE_EXTRA_CONTEXT',
+                                request,
+                                context
+                            )
+    context.update(extra_context)
+
     return render(request, 'user_profile/user_stats.html', context)
 
 def user_recent(request, user, context):
@@ -539,19 +603,14 @@ def user_recent(request, user, context):
 
     class Event(object):
         is_badge = False
-        def __init__(self, time, type, title, summary, answer_id, question_id):
+        def __init__(self, time, type, title, summary, url):
             self.time = time
             self.type = get_type_name(type)
             self.type_id = type
             self.title = title
             self.summary = summary
             slug_title = slugify(title)
-            self.title_link = reverse(
-                                'question',
-                                kwargs={'id':question_id}
-                            ) + u'%s' % slug_title
-            if int(answer_id) > 0:
-                self.title_link += '#%s' % answer_id
+            self.title_link = url
 
     class AwardEvent(object):
         is_badge = True
@@ -573,123 +632,47 @@ def user_recent(request, user, context):
         const.TYPE_ACTIVITY_PRIZE
     )
 
-    #source of information about activities
+    #1) get source of information about activities
     activity_objects = models.Activity.objects.filter(
                                         user=user,
                                         activity_type__in=activity_types
+                                    ).order_by(
+                                        '-active_at'
                                     )[:const.USER_VIEW_DATA_SIZE]
 
+    #2) load content objects ("c.objects) for each activity
+    # the return value is dictionary where activity id's are keys
+    content_objects_by_activity = activity_objects.fetch_content_objects_dict()
+
+        
     #a list of digest objects, suitable for display
     #the number of activities to show is not guaranteed to be
     #const.USER_VIEW_DATA_TYPE, because we don't show activity
     #for deleted content
     activities = []
     for activity in activity_objects:
+        content = content_objects_by_activity.get(activity.id)
 
-        # TODO: multi-if means that we have here a construct for which a design pattern should be used
+        if content is None:
+            continue
 
-        # ask questions
-        if activity.activity_type == const.TYPE_ACTIVITY_ASK_QUESTION:
-            question = activity.content_object
-            if not question.deleted:
-                activities.append(Event(
-                    time=activity.active_at,
-                    type=activity.activity_type,
-                    title=question.thread.title,
-                    summary='', #q.summary,  # TODO: was set to '' before, but that was probably wrong
-                    answer_id=0,
-                    question_id=question.id
-                ))
+        if activity.activity_type == const.TYPE_ACTIVITY_PRIZE:
+            event = AwardEvent(
+                time=content.awarded_at,
+                type=activity.activity_type,
+                content_object=content.content_object,
+                badge=content.badge,
+            )
+        else:
+            event = Event(
+                time=activity.active_at,
+                type=activity.activity_type,
+                title=content.thread.title,
+                summary=content.summary,
+                url=content.get_absolute_url()
+            )
 
-        elif activity.activity_type == const.TYPE_ACTIVITY_ANSWER:
-            ans = activity.content_object
-            question = ans.thread._question_post()
-            if not ans.deleted and not question.deleted:
-                activities.append(Event(
-                    time=activity.active_at,
-                    type=activity.activity_type,
-                    title=ans.thread.title,
-                    summary=question.summary,
-                    answer_id=ans.id,
-                    question_id=question.id
-                ))
-
-        elif activity.activity_type == const.TYPE_ACTIVITY_COMMENT_QUESTION:
-            cm = activity.content_object
-            q = cm.parent
-            #assert q.is_question(): todo the activity types may be wrong
-            if not q.deleted:
-                activities.append(Event(
-                    time=cm.added_at,
-                    type=activity.activity_type,
-                    title=q.thread.title,
-                    summary='',
-                    answer_id=0,
-                    question_id=q.id
-                ))
-
-        elif activity.activity_type == const.TYPE_ACTIVITY_COMMENT_ANSWER:
-            cm = activity.content_object
-            ans = cm.parent
-            #assert ans.is_answer()
-            question = ans.thread._question_post()
-            if not ans.deleted and not question.deleted:
-                activities.append(Event(
-                    time=cm.added_at,
-                    type=activity.activity_type,
-                    title=ans.thread.title,
-                    summary='',
-                    answer_id=ans.id,
-                    question_id=question.id
-                ))
-
-        elif activity.activity_type == const.TYPE_ACTIVITY_UPDATE_QUESTION:
-            q = activity.content_object
-            if not q.deleted:
-                activities.append(Event(
-                    time=activity.active_at,
-                    type=activity.activity_type,
-                    title=q.thread.title,
-                    summary=q.summary,
-                    answer_id=0,
-                    question_id=q.id
-                ))
-
-        elif activity.activity_type == const.TYPE_ACTIVITY_UPDATE_ANSWER:
-            ans = activity.content_object
-            question = ans.thread._question_post()
-            if not ans.deleted and not question.deleted:
-                activities.append(Event(
-                    time=activity.active_at,
-                    type=activity.activity_type,
-                    title=ans.thread.title,
-                    summary=ans.summary,
-                    answer_id=ans.id,
-                    question_id=question.id
-                ))
-
-        elif activity.activity_type == const.TYPE_ACTIVITY_MARK_ANSWER:
-            ans = activity.content_object
-            question = ans.thread._question_post()
-            if not ans.deleted and not question.deleted:
-                activities.append(Event(
-                    time=activity.active_at,
-                    type=activity.activity_type,
-                    title=ans.thread.title,
-                    summary='',
-                    answer_id=0,
-                    question_id=question.id
-                ))
-
-        elif activity.activity_type == const.TYPE_ACTIVITY_PRIZE:
-            award = activity.content_object
-            if award is not None:#todo: work around halfa$$ comment deletion
-                activities.append(AwardEvent(
-                    time=award.awarded_at,
-                    type=activity.activity_type,
-                    content_object=award.content_object,
-                    badge=award.badge,
-                ))
+        activities.append(event)
 
     activities.sort(key=operator.attrgetter('time'), reverse=True)
 
@@ -697,7 +680,6 @@ def user_recent(request, user, context):
         'active_tab': 'users',
         'page_class': 'user-profile-page',
         'tab_name' : 'recent',
-        'tab_description' : _('recent user activity'),
         'page_title' : _('profile - recent activity'),
         'activities' : activities
     }
@@ -726,9 +708,9 @@ def show_group_join_requests(request, user, context):
                     ).order_by('-active_at')
     data = {
         'active_tab':'users',
+        'inbox_section': 'group-join-requests',
         'page_class': 'user-profile-page',
         'tab_name' : 'join_requests',
-        'tab_description' : _('group joining requests'),
         'page_title' : _('profile - moderation'),
         'groups_dict': groups_dict,
         'join_requests': join_requests
@@ -756,20 +738,9 @@ def user_responses(request, user, context):
 
     #1) select activity types according to section
     section = request.GET.get('section', 'forum')
-    if section == 'flags' and not\
-        (request.user.is_moderator() or request.user.is_administrator()):
-        raise Http404
-
     if section == 'forum':
         activity_types = const.RESPONSE_ACTIVITY_TYPES_FOR_DISPLAY
         activity_types += (const.TYPE_ACTIVITY_MENTION,)
-    elif section == 'flags':
-        activity_types = (const.TYPE_ACTIVITY_MARK_OFFENSIVE,)
-        if askbot_settings.ENABLE_CONTENT_MODERATION:
-            activity_types += (
-                const.TYPE_ACTIVITY_MODERATED_NEW_POST,
-                const.TYPE_ACTIVITY_MODERATED_POST_EDIT
-            )
     elif section == 'join_requests':
         return show_group_join_requests(request, user, context)
     elif section == 'messages':
@@ -785,7 +756,6 @@ def user_responses(request, user, context):
             'page_class': 'user-profile-page',
             'tab_name' : 'inbox',
             'inbox_section': section,
-            'tab_description' : _('private messages'),
             'page_title' : _('profile - messages')
         }
         context.update(data)
@@ -823,41 +793,50 @@ def user_responses(request, user, context):
     #3) "package" data for the output
     response_list = list()
     for memo in memo_set:
-        if memo.activity.content_object is None:
+        obj = memo.activity.content_object
+        if obj is None:
+            memo.activity.delete()
             continue#a temp plug due to bug in the comment deletion
+
+        act = memo.activity
+        act_user = act.user
+        act_message = act.get_activity_type_display()
+        act_type = 'edit'
+
         response = {
             'id': memo.id,
-            'timestamp': memo.activity.active_at,
-            'user': memo.activity.user,
+            'timestamp': act.active_at,
+            'user': act_user,
             'is_new': memo.is_new(),
-            'response_url': memo.activity.get_absolute_url(),
-            'response_snippet': memo.activity.get_snippet(),
-            'response_title': memo.activity.question.thread.title,
-            'response_type': memo.activity.get_activity_type_display(),
-            'response_id': memo.activity.question.id,
-            'nested_responses': [],
-            'response_content': memo.activity.content_object.html,
+            'url': act.get_absolute_url(),
+            'snippet': act.get_snippet(),
+            'title': act.question.thread.title,
+            'message_type': act_message,
+            'memo_type': act_type,
+            'question_id': act.question.id,
+            'followup_messages': list(),
+            'content': obj.html or obj.text,
         }
         response_list.append(response)
 
     #4) sort by response id
-    response_list.sort(lambda x,y: cmp(y['response_id'], x['response_id']))
+    response_list.sort(lambda x,y: cmp(y['question_id'], x['question_id']))
 
     #5) group responses by thread (response_id is really the question post id)
-    last_response_id = None #flag to know if the response id is different
-    filtered_response_list = list()
-    for i, response in enumerate(response_list):
+    last_question_id = None #flag to know if the question id is different
+    filtered_message_list = list()
+    for message in response_list:
         #todo: group responses by the user as well
-        if response['response_id'] == last_response_id:
-            original_response = dict.copy(filtered_response_list[len(filtered_response_list)-1])
-            original_response['nested_responses'].append(response)
-            filtered_response_list[len(filtered_response_list)-1] = original_response
+        if message['question_id'] == last_question_id:
+            original_message = dict.copy(filtered_message_list[-1])
+            original_message['followup_messages'].append(message)
+            filtered_message_list[-1] = original_message
         else:
-            filtered_response_list.append(response)
-            last_response_id = response['response_id']
+            filtered_message_list.append(message)
+            last_question_id = message['question_id']
 
     #6) sort responses by time
-    filtered_response_list.sort(lambda x,y: cmp(y['timestamp'], x['timestamp']))
+    filtered_message_list.sort(lambda x,y: cmp(y['timestamp'], x['timestamp']))
 
     reject_reasons = models.PostFlagReason.objects.all().order_by('title')
     data = {
@@ -865,13 +844,13 @@ def user_responses(request, user, context):
         'page_class': 'user-profile-page',
         'tab_name' : 'inbox',
         'inbox_section': section,
-        'tab_description' : _('comments and answers to others questions'),
         'page_title' : _('profile - responses'),
         'post_reject_reasons': reject_reasons,
-        'responses' : filtered_response_list,
+        'messages' : filtered_message_list,
     }
     context.update(data)
-    return render(request, 'user_inbox/responses_and_flags.html', context)
+    template = 'user_inbox/responses.html'
+    return render(request, template, context)
 
 def user_network(request, user, context):
     if 'followit' not in django_settings.INSTALLED_APPS:
@@ -907,7 +886,6 @@ def user_votes(request, user, context):
         'active_tab':'users',
         'page_class': 'user-profile-page',
         'tab_name' : 'votes',
-        'tab_description' : _('user vote record'),
         'page_title' : _('profile - votes'),
         'votes' : votes[:const.USER_VIEW_DATA_SIZE]
     }
@@ -929,7 +907,6 @@ def user_reputation(request, user, context):
         'active_tab':'users',
         'page_class': 'user-profile-page',
         'tab_name': 'reputation',
-        'tab_description': _('user karma'),
         'page_title': _("Profile - User's Karma"),
         'reputation': reputes,
         'reps': reps
@@ -940,17 +917,36 @@ def user_reputation(request, user, context):
 
 def user_favorites(request, user, context):
     favorite_threads = user.user_favorite_questions.values_list('thread', flat=True)
-    questions = models.Post.objects.filter(post_type='question', thread__in=favorite_threads)\
-                    .select_related('thread', 'thread__last_activity_by')\
-                    .order_by('-points', '-thread__last_activity_at')[:const.USER_VIEW_DATA_SIZE]
+    questions_qs = models.Post.objects.filter(
+                                post_type='question',
+                                thread__in=favorite_threads
+                            ).select_related(
+                                'thread', 'thread__last_activity_by'
+                            ).order_by(
+                                '-points', '-thread__last_activity_at'
+                            )[:const.USER_VIEW_DATA_SIZE]
+
+    q_paginator = Paginator(questions_qs, const.USER_POSTS_PAGE_SIZE)
+    questions = q_paginator.page(1).object_list
+    question_count = q_paginator.count
+
+    q_paginator_context = functions.setup_paginator({
+                    'is_paginated' : (question_count > const.USER_POSTS_PAGE_SIZE),
+                    'pages': q_paginator.num_pages,
+                    'current_page_number': 1,
+                    'page_object': q_paginator.page(1),
+                    'base_url' : '?' #this paginator will be ajax
+                })
 
     data = {
         'active_tab':'users',
         'page_class': 'user-profile-page',
         'tab_name' : 'favorites',
-        'tab_description' : _('users favorite questions'),
-        'page_title' : _('profile - favorite questions'),
+        'page_title' : _('profile - favorites'),
         'questions' : questions,
+        'q_paginator_context': q_paginator_context,
+        'question_count': question_count,
+        'page_size': const.USER_POSTS_PAGE_SIZE
     }
     context.update(data)
     return render(request, 'user_profile/user_favorites.html', context)
@@ -1019,7 +1015,6 @@ def user_email_subscriptions(request, user, context):
         'subscribed_tag_names': user.get_marked_tag_names('subscribed'),
         'page_class': 'user-profile-page',
         'tab_name': 'email_subscriptions',
-        'tab_description': _('email subscription settings'),
         'page_title': _('profile - email subscriptions'),
         'email_feeds_form': email_feeds_form,
         'tag_filter_selection_form': tag_filter_form,
@@ -1027,6 +1022,8 @@ def user_email_subscriptions(request, user, context):
         'user_languages': user.languages.split()
     }
     context.update(data)
+    #todo: really need only if subscribed tags are enabled
+    context.update(view_context.get_for_tag_editor())
     return render(
         request,
         'user_profile/user_email_subscriptions.html',
@@ -1101,13 +1098,14 @@ def user(request, id, slug=None, tab_name=None):
 
     user_view_func = USER_VIEW_CALL_TABLE.get(tab_name, user_stats)
 
-    search_state = SearchState( # Non-default SearchState with user data set
+    search_state = SearchState(
         scope=None,
         sort=None,
         query=None,
         tags=None,
-        author=profile_owner.id,
+        author=None,
         page=None,
+        page_size=const.USER_POSTS_PAGE_SIZE,
         user_logged_in=profile_owner.is_authenticated(),
     )
 
@@ -1121,17 +1119,6 @@ def user(request, id, slug=None, tab_name=None):
         context['custom_tab_name'] = CUSTOM_TAB['NAME']
         context['custom_tab_slug'] = CUSTOM_TAB['SLUG']
     return user_view_func(request, profile_owner, context)
-
-@csrf.csrf_exempt
-def update_has_custom_avatar(request):
-    """updates current avatar type data for the user
-    """
-    if request.is_ajax() and request.user.is_authenticated():
-        if request.user.avatar_type in ('n', 'g'):
-            request.user.update_avatar_type()
-            request.session['avatar_data_updated_at'] = datetime.datetime.now()
-            return HttpResponse(simplejson.dumps({'status':'ok'}), mimetype='application/json')
-    return HttpResponseForbidden()
 
 def groups(request, id = None, slug = None):
     """output groups page

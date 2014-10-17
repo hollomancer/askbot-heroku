@@ -17,6 +17,7 @@ from django.utils.encoding import smart_str
 from askbot import exceptions as askbot_exceptions
 from askbot.conf import settings as askbot_settings
 from askbot.utils import url_utils
+from askbot.utils.html import site_url
 from askbot import get_version
 
 def auto_now_timestamp(func):
@@ -41,7 +42,7 @@ def ajax_login_required(view_func):
             return view_func(request, *args, **kwargs)
         else:
             json = simplejson.dumps({'login_required':True})
-            return HttpResponseForbidden(json, mimetype='application/json')
+            return HttpResponseForbidden(json, content_type='application/json')
     return wrap
 
 
@@ -106,7 +107,7 @@ def ajax_only(view_func):
                 'message': message,
                 'success': 0
             }
-            return HttpResponse(simplejson.dumps(data), mimetype='application/json')
+            return HttpResponse(simplejson.dumps(data), content_type='application/json')
 
         if isinstance(data, HttpResponse):#is this used?
             data.mimetype = 'application/json'
@@ -114,7 +115,7 @@ def ajax_only(view_func):
         else:
             data['success'] = 1
             json = simplejson.dumps(data)
-            return HttpResponse(json, mimetype='application/json')
+            return HttpResponse(json, content_type='application/json')
     return wrapper
 
 def check_authorization_to_post(func_or_message):
@@ -194,7 +195,7 @@ def check_spam(field):
 
             if askbot_settings.USE_AKISMET and request.method == "POST":
                 comment = smart_str(request.POST[field])
-                data = {'user_ip': request.META["REMOTE_ADDR"],
+                data = {'user_ip': request.META.get('REMOTE_ADDR'),
                         'user_agent': request.environ['HTTP_USER_AGENT'],
                         'comment_author': smart_str(request.user.username),
                         }
@@ -204,7 +205,7 @@ def check_spam(field):
                 from akismet import Akismet
                 api = Akismet(
                     askbot_settings.AKISMET_API_KEY, 
-                    smart_str(askbot_settings.APP_URL), 
+                    smart_str(site_url(reverse('questions'))), 
                     "Askbot/%s" % get_version()
                 )
 

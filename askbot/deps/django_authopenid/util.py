@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 import cgi
+import httplib
 import urllib
 import urlparse
 import functools
 import re
 import random
+from askbot.utils.html import site_url
 from openid.store.interface import OpenIDStore
 from openid.association import Association as OIDAssociation
 from openid.extensions import sreg
 from openid import store as openid_store
 import oauth2 as oauth # OAuth1 protocol
-
 from django.db.models.query import Q
 from django.conf import settings
 from django.core.urlresolvers import reverse
@@ -35,9 +36,9 @@ except:
 import time, base64, hmac, hashlib, operator, logging
 from models import Association, Nonce
 
-__all__ = ['OpenID', 'DjangoOpenIDStore', 'from_openid_response', 'clean_next']
+__all__ = ['OpenID', 'DjangoOpenIDStore', 'from_openid_response']
 
-ALLOWED_LOGIN_TYPES = ('password', 'oauth', 'openid-direct', 'openid-username', 'wordpress')
+ALLOWED_LOGIN_TYPES = ('password', 'oauth', 'oauth2', 'openid-direct', 'openid-username', 'wordpress')
 
 class OpenID:
     def __init__(self, openid_, issued, attrs=None, sreg_=None):
@@ -160,19 +161,33 @@ def get_provider_name(openid_url):
 
 def use_password_login():
     """password login is activated
-    either if USE_RECAPTCHA is false
-    of if recaptcha keys are set correctly
+    if any of the login methods requiring user name
+    and password are activated
+
+    TODO: these should be mutually exclusive and
+    it should be possible to register another login
+    method using password and user name via configuration
     """
     if askbot_settings.SIGNIN_WORDPRESS_SITE_ENABLED:
         return True
-    if askbot_settings.USE_RECAPTCHA:
-        if askbot_settings.RECAPTCHA_KEY and askbot_settings.RECAPTCHA_SECRET:
-            return True
-        else:
-            logging.critical('if USE_RECAPTCHA == True, set recaptcha keys!!!')
-            return False
-    else:
+    if askbot_settings.SIGNIN_LOCAL_ENABLED:
         return True
+    if askbot_settings.USE_LDAP_FOR_PASSWORD_LOGIN:
+        return True
+    return False
+
+def is_login_method_enabled(name):
+    name_key = name.upper().replace('-', '_')
+    setting = getattr(askbot_settings, 'SIGNIN_' + name_key + '_ENABLED', None)
+    if setting is not None:
+        return setting
+
+    google_method = askbot_settings.SIGNIN_GOOGLE_METHOD
+    if name == 'google':
+        return google_method == 'openid'
+    elif name == 'google-plus':
+        return google_method == 'google-plus'
+    return False
 
 def filter_enabled_providers(data):
     """deletes data about disabled providers from
@@ -181,8 +196,7 @@ def filter_enabled_providers(data):
     delete_list = list()
     for provider_key, provider_settings in data.items():
         name = provider_settings['name']
-        is_enabled = getattr(askbot_settings, 'SIGNIN_' + name.upper() + '_ENABLED')
-        if is_enabled == False:
+        if not is_login_method_enabled(name):
             delete_list.append(provider_key)
 
     for provider_key in delete_list:
@@ -272,6 +286,15 @@ class LoginMethod(object):
             self.oauth_authorize_url = self.get_required_attr('OAUTH_AUTHORIZE_URL', for_what)
             self.oauth_get_user_id_function = self.get_required_attr('oauth_get_user_id_function', for_what)
 
+        if self.login_type == 'oauth2':
+            for_what = 'custom OAuth2 login'
+            self.auth_endpoint = self.get_required_attr('OAUTH_ENDPOINT', for_what)
+            self.token_endpoint = self.get_required_attr('OAUTH_TOKEN_ENDPOINT', for_what)
+            self.resource_endpoint = self.get_required_attr('OAUTH_RESOURCE_ENDPOINT', for_what)
+            self.oauth_get_user_id_function = self.get_required_attr('oauth_get_user_id_function', for_what)
+            self.response_parser = getattr(self.mod, 'response_parser', None)
+            self.token_transport = getattr(self.mod, 'token_transport', None)
+
         if self.login_type.startswith('openid'):
             self.openid_endpoint = self.get_required_attr('OPENID_ENDPOINT', 'custom OpenID login')
             if self.login_type == 'openid-username':
@@ -293,7 +316,8 @@ class LoginMethod(object):
             'change_password_prompt', 'consumer_key', 'consumer_secret',
             'request_token_url', 'access_token_url', 'authorize_url',
             'get_user_id_function', 'openid_endpoint', 'tooltip_text',
-            'check_password',
+            'check_password', 'auth_endpoint', 'token_endpoint',
+            'resource_endpoint', 'response_parser', 'token_transport'
         )
         #some parameters in the class have different names from those
         #in the dictionary
@@ -387,6 +411,18 @@ def get_enabled_major_login_providers():
             'password_changeable': True
         }
 
+    if askbot_settings.SIGNIN_CUSTOM_OPENID_ENABLED:
+        context_dict = {'login_name': askbot_settings.SIGNIN_CUSTOM_OPENID_NAME}
+        data['custom_openid'] = {
+            'name': 'custom_openid',
+            'display_name': askbot_settings.SIGNIN_CUSTOM_OPENID_NAME,
+            'type': askbot_settings.SIGNIN_CUSTOM_OPENID_MODE,
+            'icon_media_path': askbot_settings.SIGNIN_CUSTOM_OPENID_LOGIN_BUTTON,
+            'tooltip_text': _('Login with %(login_name)s') % context_dict,
+            'openid_endpoint': askbot_settings.SIGNIN_CUSTOM_OPENID_ENDPOINT,
+            'extra_token_name': _('%(login_name)s username') % context_dict
+        }
+
     def get_facebook_user_id(client):
         """returns facebook user id given the access token"""
         profile = client.request('me')
@@ -402,8 +438,8 @@ def get_enabled_major_login_providers():
             'resource_endpoint': 'https://graph.facebook.com/',
             'icon_media_path': '/jquery-openid/images/facebook.gif',
             'get_user_id_function': get_facebook_user_id,
-            'response_parser': lambda data: dict(urlparse.parse_qsl(data))
-
+            'response_parser': lambda data: dict(urlparse.parse_qsl(data)),
+            'scope': ['email',],
         }
     if askbot_settings.TWITTER_KEY and askbot_settings.TWITTER_SECRET:
         data['twitter'] = {
@@ -470,12 +506,38 @@ def get_enabled_major_login_providers():
             'icon_media_path': '/jquery-openid/images/linkedin.gif',
             'get_user_id_function': get_linked_in_user_id
         }
-    data['google'] = {
-        'name': 'google',
-        'display_name': 'Google',
-        'type': 'openid-direct',
-        'icon_media_path': '/jquery-openid/images/google.gif',
-        'openid_endpoint': 'https://www.google.com/accounts/o8/id',
+
+    def get_google_user_id(client):
+        return client.request('me')['id']
+
+    google_method = askbot_settings.SIGNIN_GOOGLE_METHOD
+    if google_method == 'google-plus':
+        if askbot_settings.GOOGLE_PLUS_KEY and askbot_settings.GOOGLE_PLUS_SECRET:
+            data['google-plus'] = {
+                'name': 'google-plus',
+                'display_name': 'Google',
+                'type': 'oauth2',
+                'auth_endpoint': 'https://accounts.google.com/o/oauth2/auth',
+                'token_endpoint': 'https://accounts.google.com/o/oauth2/token',
+                'resource_endpoint': 'https://www.googleapis.com/plus/v1/people/',
+                'icon_media_path': '/jquery-openid/images/google.gif',
+                'get_user_id_function': get_google_user_id,
+                'extra_auth_params': {'scope': ('profile', 'email', 'openid'), 'openid.realm': askbot_settings.APP_URL}
+            }
+    elif google_method == 'openid':
+        data['google'] = {
+            'name': 'google',
+            'display_name': 'Google',
+            'type': 'openid-direct',
+            'icon_media_path': '/jquery-openid/images/google-openid.gif',
+            'openid_endpoint': 'https://www.google.com/accounts/o8/id',
+        }
+
+    data['mozilla-persona'] = {
+        'name': 'mozilla-persona',
+        'display_name': 'Mozilla Persona',
+        'type': 'mozilla-persona',
+        'icon_media_path': '/jquery-openid/images/mozilla-persona.gif',
     }
     data['yahoo'] = {
         'name': 'yahoo',
@@ -492,6 +554,14 @@ def get_enabled_major_login_providers():
         'extra_token_name': _('AOL screen name'),
         'icon_media_path': '/jquery-openid/images/aol.gif',
         'openid_endpoint': 'http://openid.aol.com/%(username)s'
+    }
+    data['launchpad'] = {
+        'name': 'launchpad',
+        'display_name': 'LaunchPad',
+        'type': 'openid-direct',
+        'icon_media_path': '/jquery-openid/images/launchpad.gif',
+        'tooltip_text': _('Sign in with LaunchPad'),
+        'openid_endpoint': 'https://login.launchpad.net/'
     }
     data['openid'] = {
         'name': 'openid',
@@ -722,7 +792,7 @@ class OAuthConnection(object):
         request_url = self.parameters['request_token_url']
 
         if callback_url:
-            callback_url = '%s%s' % (askbot_settings.APP_URL, callback_url)
+            callback_url = site_url(callback_url)
             request_body = urllib.urlencode(dict(oauth_callback=callback_url))
 
             self.request_token = self.send_request(
@@ -749,20 +819,27 @@ class OAuthConnection(object):
     def get_token(self):
         return self.request_token
 
-    def get_user_id(self, oauth_token = None, oauth_verifier = None):
-        """Returns user ID within the OAuth provider system,
-        based on ``oauth_token`` and ``oauth_verifier``
-        """
-
+    def get_client(self, oauth_token=None, oauth_verifier=None):
         token = oauth.Token(
                     oauth_token['oauth_token'],
                     oauth_token['oauth_token_secret']
                 )
-        token.set_verifier(oauth_verifier)
-        client = oauth.Client(self.consumer, token = token)
+        if oauth_verifier:
+            token.set_verifier(oauth_verifier)
+        return oauth.Client(self.consumer, token=token)
+
+    def get_access_token(self, oauth_token=None, oauth_verifier=None):
+        """returns data as returned upon visiting te access_token_url"""
+        client = self.get_client(oauth_token, oauth_verifier)
         url = self.parameters['access_token_url']
         #there must be some provider-specific post-processing
-        data = self.send_request(client = client, url=url, method='GET')
+        return self.send_request(client = client, url=url, method='GET')
+
+    def get_user_id(self, oauth_token = None, oauth_verifier = None):
+        """Returns user ID within the OAuth provider system,
+        based on ``oauth_token`` and ``oauth_verifier``
+        """
+        data = self.get_access_token(oauth_token, oauth_verifier)
         data['consumer_key'] = self.parameters['consumer_key']
         data['consumer_secret'] = self.parameters['consumer_secret']
         return self.parameters['get_user_id_function'](data)
@@ -802,14 +879,14 @@ def get_oauth2_starter_url(provider_name, csrf_token):
 
     providers = get_enabled_login_providers()
     params = providers[provider_name]
-    client_id = getattr(askbot_settings, provider_name.upper() + '_KEY')
-    redirect_uri = askbot_settings.APP_URL + reverse('user_complete_oauth2_signin')
+    client_id = getattr(askbot_settings, provider_name.replace('-', '_').upper() + '_KEY')
+    redirect_uri = site_url(reverse('user_complete_oauth2_signin'))
     client = Client(
         auth_endpoint=params['auth_endpoint'],
         client_id=client_id,
         redirect_uri=redirect_uri
     )
-    return client.auth_uri(state=csrf_token)
+    return client.auth_uri(state=csrf_token, **params.get('extra_auth_params', {}))
 
 
 def ldap_check_password(username, password):
@@ -822,3 +899,32 @@ def ldap_check_password(username, password):
     except ldap.LDAPError, e:
         logging.critical(unicode(e))
         return False
+
+
+def mozilla_persona_get_email_from_assertion(assertion):
+    conn = httplib.HTTPSConnection('verifier.login.persona.org')
+    parsed_url = urlparse.urlparse(askbot_settings.APP_URL)
+    params = urllib.urlencode({
+                    'assertion': assertion,
+                    'audience': parsed_url.scheme + '://' + parsed_url.netloc
+                })
+    headers = {'Content-type': 'application/x-www-form-urlencoded', 'Accept': 'text/plain'}
+    conn.request('POST', '/verify', params, headers)
+    response = conn.getresponse()
+    if response.status == 200:
+        data = simplejson.loads(response.read())
+        email = data.get('email')
+        if email:
+            return email
+        else:
+            message = unicode(data)
+            message += '\nMost likely base url in /settings/QA_SITE_SETTINGS/ is incorrect'
+            raise ImproperlyConfigured(message)
+    #todo: nead more feedback to help debug fail cases
+    return None
+
+def google_migrate_from_openid_to_gplus(openid_url, gplus_id):
+    from askbot.deps.django_authopenid.models import UserAssociation
+    assoc = UserAssociation.object.filter(openid_url=openid_url)
+    assoc.update(openid_url=str(gplus_id), provider_name='google-plus')
+

@@ -1,28 +1,32 @@
 {% extends "two_column_body.html" %}
 {% import "macros.html" as macros %}
 <!-- question_edit.html -->
-{% block title %}{% spaceless %}{% trans %}Edit question{% endtrans %}{% endspaceless %}{% endblock %}
+{% block title %}{% spaceless %}{{ settings.WORDS_EDIT_QUESTION|escape }}{% endspaceless %}{% endblock %}
 {% block forestyle %}
     <link rel="stylesheet" type="text/css" href="{{"/js/wmd/wmd.css"|media}}" />
 {% endblock %}
 {% block content %}
-<div class="section-title">{% trans %}Edit question{% endtrans %} [<a href="{{ question.get_absolute_url() }}">{% trans %}back{% endtrans %}</a>]</div>
+<div class="section-title">{{ settings.WORDS_EDIT_QUESTION|escape }} [<a href="{{ question.get_absolute_url() }}">{% trans %}back{% endtrans %}</a>]</div>
 <form id="fmedit" action="{% url edit_question question.id %}" method="post" >{% csrf_token %}
-
     {% if revision_form.revision.errors %}{{ revision_form.revision.errors.as_ul() }}{% endif %}
-    <div style="vertical-align:middle">
-    {{ revision_form.revision }} <input type="hidden"
-                                        id="select_revision"
-                                        name="select_revision" 
-                                        value="false">
-    </div> 
+    {{ revision_form.revision }}
+    <input type="hidden" id="select_revision" name="select_revision" value="false"/>
+    <div class="form-item">
+        <label for="id_title" >
+            {{ settings.WORDS_QUESTION_IN_ONE_SENTENCE|escape }}
+            {% if form.title.errors %}
+                {{ form.title.errors }}
+            {% endif %}
+        </label>
+        {{ form.title }}
+    </div>
+    <label for="editor">{% trans %}Details{% endtrans %}</label>
     {% set use_category_selector = (settings.TAG_SOURCE == 'category-tree') %}
     {{
         macros.edit_post(
                     form,
                     post_type = 'question',
                     post_html = revision.text,
-                    edit_title = True,
                     mandatory_tags = mandatory_tags,
                     use_category_selector = use_category_selector,
                     tag_names = tag_names,
@@ -31,11 +35,18 @@
                 )
     }}
     <div class="after-editor">
+        {% if form.recaptcha %}
+            <div>{{ macros.form_field_with_errors(form.recaptcha) }}</div>
+            <div class="clearfix"></div>
+        {% endif %}
         <div class="question-options">
             {% if settings.WIKI_ON and question.wiki == False %}
                 {{ macros.checkbox_in_div(form.wiki) }}
             {% endif %}
-            {% if form.can_stay_anonymous() %}
+            {% if settings.ENABLE_EMAIL_ALERTS %}
+                {{ macros.checkbox_in_div(form.suppress_email) }}
+            {% endif %}
+            {% if form.can_edit_anonymously() %}
                 {{ macros.checkbox_in_div(form.reveal_identity) }}
             {% endif %}
             {% if settings.GROUPS_ENABLED and 
@@ -51,15 +62,21 @@
             </div>
             {% endif %}
         </div>
-        <input id="edit_post_form_submit_button" type="submit" value="{% trans %}Save edit{% endtrans %}" class="submit" />&nbsp;
-        <input type="button" value="{% trans %}Cancel{% endtrans %}" class="submit" onclick="history.back(-1);" />
+        <input id="edit_post_form_submit_button" type="submit" value="{% trans %}Save edit{% endtrans %}" class="large submit" />
+        <input type="button" value="{% trans %}Cancel{% endtrans %}" class="large submit" onclick="history.back(-1);" />
 
     </div>
 </form>
 {% endblock %}
 
 {% block sidebar %}
-{% include "widgets/question_edit_tips.html" %}
+<div id ="tips" class="box">
+    <h2>{% trans %}Tips{% endtrans %}</h2>
+    {% include "widgets/question_edit_tips.html" %}
+</div>
+{% if settings.EDITOR_TYPE == 'markdown' %}
+    {% include "/widgets/markdown_help.html" %}
+{% endif %}
 {% endblock %}
 
 {% block endjs %}
@@ -71,8 +88,7 @@
     <script type='text/javascript' src='{{"/js/jquery.validate.min.js"|media}}'></script>
     <script type='text/javascript' src='{{"/js/post.js"|media}}'></script>
     {% if settings.EDITOR_TYPE == 'markdown' %}
-        <script type='text/javascript' src='{{"/js/wmd/showdown.js"|media}}'></script>
-        <script type='text/javascript' src='{{"/js/wmd/wmd.js"|media}}'></script>
+        {% include "meta/markdown_javascript.html" %}
     {% endif %}
     <script type="text/javascript">
     {% if settings.ENABLE_MATHJAX or settings.MARKUP_CODE_FRIENDLY %}
