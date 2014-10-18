@@ -5,6 +5,8 @@ import sys
 import askbot
 import site
 
+ASKBOT_SELF_TEST = False
+
 #this line is added so that we can import pre-packaged askbot dependencies
 ASKBOT_ROOT = os.path.abspath(os.path.dirname(askbot.__file__))
 site.addsitedir(os.path.join(ASKBOT_ROOT, 'deps'))
@@ -285,13 +287,13 @@ CSRF_COOKIE_NAME = 'askbot_csrf'
 #https://docs.djangoproject.com/en/1.3/ref/contrib/csrf/
 
 RECAPTCHA_USE_SSL = True
-
+	
 #HAYSTACK_SETTINGS
 ENABLE_HAYSTACK_SEARCH = False
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
 
-TINYMCE_COMPRESSOR = True
+TINYMCE_COMPRESSOR = False
 TINYMCE_SPELLCHECKER = False
 TINYMCE_JS_ROOT = os.path.join(STATIC_ROOT, 'default/media/js/tinymce/')
 TINYMCE_URL = STATIC_URL + 'default/media/js/tinymce/'
