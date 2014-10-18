@@ -11,12 +11,12 @@ ASKBOT_SELF_TEST = False
 ASKBOT_ROOT = os.path.abspath(os.path.dirname(askbot.__file__))
 site.addsitedir(os.path.join(ASKBOT_ROOT, 'deps'))
 
-DEBUG = True#set to True to enable debugging
+DEBUG = False#set to True to enable debugging
 TEMPLATE_DEBUG = False#keep false when debugging jinja2 templates
 INTERNAL_IPS = ('127.0.0.1',)
 
 ADMINS = (
-    ('admin', 'admin@domain.com'),
+    (os.environ.get('ADMIN_NAME'), os.environ.get('ADMIN_EMAIL')),
 )
 
 MANAGERS = ADMINS
