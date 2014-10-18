@@ -292,7 +292,7 @@ ASKBOT_MULTILINGUAL = False
 ASKBOT_CSS_DEVEL = False
 if 'ASKBOT_CSS_DEVEL' in locals() and ASKBOT_CSS_DEVEL == TRUE:
     COMPRESS_PRECOMPILERS = (
-       ('text/less',' 'lessc {infile} {outfile}'),
+       ('text/less',' 'less {infile} {outfile}'),
    )
 
 COMPRESS_JS_FILTERS = []
