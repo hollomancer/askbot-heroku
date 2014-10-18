@@ -14,7 +14,7 @@ TEMPLATE_DEBUG = False#keep false when debugging jinja2 templates
 INTERNAL_IPS = ('127.0.0.1',)
 
 ADMINS = (
-    ('Rodrigo', 'rodelrod@gmail.com'),
+    ('admin', 'admin@domain.com'),
 )
 
 MANAGERS = ADMINS
@@ -292,7 +292,7 @@ ASKBOT_MULTILINGUAL = False
 ASKBOT_CSS_DEVEL = False
 if 'ASKBOT_CSS_DEVEL' in locals() and ASKBOT_CSS_DEVEL == True:
     COMPRESS_PRECOMPILERS = (
-       ('text/less',' 'lessc {infile} {outfile}'),
+       ('text/less', 'lessc {infile} {outfile}'),
    )
 
 COMPRESS_JS_FILTERS = []
