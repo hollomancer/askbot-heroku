@@ -287,4 +287,18 @@ GROUP_MESSAGING = {
     'BASE_URL_PARAMS': {'section': 'messages', 'sort': 'inbox'}
 }
 
+ASKBOT_MULTILINGUAL = False
+
+ASKBOT_CSS_DEVEL = False
+if 'ASKBOT_CSS_DEVEL' in locals() and ASKBOT_CSS_DEVEL == TRUE:
+    COMPRESS_PRECOMPILERS = (
+       ('text/less',' 'lessc {infile} {outfile}'),
+   )
+
+COMPRESS_JS_FILTERS = []
+COMPRESS_PARSER = 'compressor.parser.HtmlParser'
 JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)
+
+SOUTH_TESTS_MIGRATE = False
+
+VERIFIER_EXPIRE_DAYS = 3
