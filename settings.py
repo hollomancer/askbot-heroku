@@ -97,9 +97,8 @@ STATICFILES_FINDERS = (
     'compressor.finders.CompressorFinder',
 )
 COMPRESS_ENABLED = True
-COMPRESS_OFFLINE = True
-COMPRESS_URL = STATIC_URL
-COMPRESS_ROOT = STATIC_ROOT
+COMPRESS_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
+
 
 # URL prefix for admin media -- CSS, JavaScript and images. Make sure to use a
 # trailing slash.
