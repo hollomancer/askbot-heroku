@@ -72,22 +72,34 @@ LANGUAGE_CODE = 'en'
 MEDIA_ROOT = os.path.join(os.path.dirname(__file__), 'askbot', 'upfiles')
 MEDIA_URL = '/upfiles/'
 
+PROJECT_ROOT = os.path.dirname(__file__)
+
 # Amazon S3 integration
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+STATICFILES_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+COMPRESS_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
 
-PROJECT_ROOT = os.path.dirname(__file__)
+# Used to make sure that only changed files are uploaded with collectstatic
+AWS_PRELOAD_METADATA = True
+
 STATIC_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
-COMPRESS_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
+STATIC_ROOT = os.path.join(PROJECT_ROOT, "static")
+STATICFILES_DIRS = (
+    ('default/media', os.path.join(ASKBOT_ROOT, 'media')),
+)
+STATICFILES_FINDERS = (
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'compressor.finders.CompressorFinder',
+)
 COMPRESS_ENABLED = True
-
-COMPRESS_ROOT = os.path.join(PROJECT_ROOT, 'static')
-STATIC_ROOT = os.path.join(PROJECT_ROOT, 'static')
-
-COMPRESS_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
-STATICFILES_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+COMPRESS_OFFLINE = True
+COMPRESS_URL = STATIC_URL
+COMPRESS_ROOT = STATIC_ROOT
 
 # URL prefix for admin media -- CSS, JavaScript and images. Make sure to use a
 # trailing slash.
@@ -272,16 +284,6 @@ djcelery.setup_loader()
 
 CSRF_COOKIE_NAME = 'askbot_csrf'
 #https://docs.djangoproject.com/en/1.3/ref/contrib/csrf/
-
-STATIC_ROOT = os.path.join(PROJECT_ROOT, "static")
-STATICFILES_DIRS = (
-    ('default/media', os.path.join(ASKBOT_ROOT, 'media')),
-)
-STATICFILES_FINDERS = (
-    'django.contrib.staticfiles.finders.FileSystemFinder',
-    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-    'compressor.finders.CompressorFinder',
-)
 
 RECAPTCHA_USE_SSL = True
 
