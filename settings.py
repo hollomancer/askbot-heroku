@@ -88,7 +88,7 @@ AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
 # Used to make sure that only changed files are uploaded with collectstatic
 AWS_PRELOAD_METADATA = True
 
-STATIC_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
+STATIC_URL = '//' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
 STATIC_ROOT = os.path.join(PROJECT_ROOT, "static")
 STATICFILES_DIRS = (
     ('default/media', os.path.join(ASKBOT_ROOT, 'media')),
@@ -100,7 +100,7 @@ STATICFILES_FINDERS = (
 )
 COMPRESS_ENABLED = True
 COMPRESS_ROOT = os.path.join(PROJECT_ROOT, "static")
-COMPRESS_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
+COMPRESS_URL = '//' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
 
 # URL prefix for admin media -- CSS, JavaScript and images. Make sure to use a
 # trailing slash.
