@@ -2,4 +2,5 @@
 psycopg2
 dj-database-url
 boto
-django-storages
+django-heroku-memcacheify
+pylibmc==1.2.3

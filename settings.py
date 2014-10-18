@@ -9,7 +9,7 @@ import site
 ASKBOT_ROOT = os.path.abspath(os.path.dirname(askbot.__file__))
 site.addsitedir(os.path.join(ASKBOT_ROOT, 'deps'))
 
-DEBUG = True#set to True to enable debugging
+DEBUG = False#set to True to enable debugging
 TEMPLATE_DEBUG = False#keep false when debugging jinja2 templates
 INTERNAL_IPS = ('127.0.0.1',)
 
@@ -189,6 +189,8 @@ INSTALLED_APPS = (
 
 #setup memcached for production use!
 #see http://docs.djangoproject.com/en/1.1/topics/cache/ for details
+from memcacheify import memcacheify
+CACHES = memcacheify()
 CACHE_BACKEND = 'locmem://'
 #needed for django-keyedcache
 CACHE_TIMEOUT = 6000
