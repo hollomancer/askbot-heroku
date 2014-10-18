@@ -13,7 +13,7 @@ site.addsitedir(os.path.join(ASKBOT_ROOT, 'deps'))
 
 DEBUG = os.environ.get('DEBUG_STATE')#set to True to enable debugging
 TEMPLATE_DEBUG = False#keep false when debugging jinja2 templates
-INTERNAL_IPS = ('127.0.0.1',)
+INTERNAL_IPS = ('*',)
 
 ADMINS = (
     (os.environ.get('ADMIN_NAME'), os.environ.get('ADMIN_EMAIL')),
@@ -99,6 +99,7 @@ STATICFILES_FINDERS = (
     'compressor.finders.CompressorFinder',
 )
 COMPRESS_ENABLED = True
+COMPRESS_ROOT = os.path.join(PROJECT_ROOT, "static")
 COMPRESS_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
 
 # URL prefix for admin media -- CSS, JavaScript and images. Make sure to use a
