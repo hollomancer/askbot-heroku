@@ -94,7 +94,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
-    'askbot.skins.loaders.Loader'
+    'askbot.skins.loaders.Loader',
     'django.template.loaders.filesystem.Loader',
     'django.template.loaders.app_directories.Loader',
 )
