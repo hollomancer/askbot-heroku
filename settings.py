@@ -97,7 +97,7 @@ STATICFILES_FINDERS = (
     'compressor.finders.CompressorFinder',
 )
 COMPRESS_ENABLED = True
-COMPRESS_URL = 'http:/' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
+COMPRESS_URL = 'http:/' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/' ## Why did it need only one slash?
 
 
 # URL prefix for admin media -- CSS, JavaScript and images. Make sure to use a
@@ -290,7 +290,7 @@ RECAPTCHA_USE_SSL = True
 ENABLE_HAYSTACK_SEARCH = False
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
-TINYMCE_COMPRESSOR = True
+TINYMCE_COMPRESSOR = False
 TINYMCE_SPELLCHECKER = False
 TINYMCE_JS_ROOT = os.path.join(STATIC_ROOT, 'default/media/js/tinymce/')
 #TINYMCE_URL = STATIC_URL + 'default/media/js/tinymce/'
