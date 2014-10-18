@@ -94,23 +94,28 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
-    'askbot.skins.loaders.Loader',
-    'django.template.loaders.app_directories.Loader',
     'django.template.loaders.filesystem.Loader',
+    'django.template.loaders.app_directories.Loader',
+    #below is askbot stuff for this tuple
+    #'askbot.skins.loaders.load_template_source', #changed due to bug 97
+    'askbot.skins.loaders.filesystem_load_template_source',
     #'django.template.loaders.eggs.load_template_source',
 )
 
 
 MIDDLEWARE_CLASSES = (
     #'django.middleware.gzip.GZipMiddleware',
-    #'askbot.middleware.locale.LocaleMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    ## Enable the following middleware if you want to enable
+    ## language selection in the site settings.
+    #'askbot.middleware.locale.LocaleMiddleware',
     #'django.middleware.cache.UpdateCacheMiddleware',
     'django.middleware.common.CommonMiddleware',
     #'django.middleware.cache.FetchFromCacheMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     #'django.middleware.sqlprint.SqlPrintingMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware'
+
     #below is askbot stuff for this tuple
     'askbot.middleware.anon_user.ConnectToSessionMessagesMiddleware',
     'askbot.middleware.forum_mode.ForumModeMiddleware',
@@ -121,6 +126,10 @@ MIDDLEWARE_CLASSES = (
     'askbot.middleware.spaceless.SpacelessMiddleware',
 )
 
+JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)
+COMPRESS_PRECOMPILERS = (
+    ('text/less', 'lessc {infile} {outfile}'),
+)
 
 ROOT_URLCONF = os.path.basename(os.path.dirname(__file__)) + '.urls'
 
@@ -160,11 +169,11 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'django.contrib.sites',
     'django.contrib.staticfiles',
-    'django.contrib.messages',
     #all of these are needed for the askbot
     'django.contrib.admin',
     'django.contrib.humanize',
-    'django.contrib.sitemaps',
+	'django.contrib.sitemaps',
+    'django.contrib.messages',
     #'debug_toolbar',
     #Optional, to enable haystack search
     #'haystack',
@@ -232,7 +241,7 @@ AUTHENTICATION_BACKENDS = (
 # Log to stdout so that the logs are collected by heroku
 logging.basicConfig(
     stream=sys.stdout,
-    level=logging.WARNING,
+    level=logging.CRITICAL,
     format='%(pathname)s TIME: %(asctime)s MSG: %(filename)s:%(funcName)s:%(lineno)d %(message)s',
 )
 
@@ -258,11 +267,9 @@ CELERY_ALWAYS_EAGER = True
 
 import djcelery
 djcelery.setup_loader()
-DOMAIN_NAME = ''
 
-CSRF_COOKIE_NAME = '_csrf'
+CSRF_COOKIE_NAME = 'askbot_csrf'
 #https://docs.djangoproject.com/en/1.3/ref/contrib/csrf/
-#CSRF_COOKIE_DOMAIN = DOMAIN_NAME
 
 STATIC_ROOT = os.path.join(PROJECT_ROOT, "static")
 STATICFILES_DIRS = (
@@ -278,25 +285,23 @@ RECAPTCHA_USE_SSL = True
 
 #HAYSTACK_SETTINGS
 ENABLE_HAYSTACK_SEARCH = False
-HAYSTACK_SITECONF = 'askbot.search.haystack'
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
-HAYSTACK_SEARCH_ENGINE = 'simple'
-
 TINYMCE_COMPRESSOR = True
 TINYMCE_SPELLCHECKER = False
 TINYMCE_JS_ROOT = os.path.join(STATIC_ROOT, 'default/media/js/tinymce/')
-TINYMCE_URL = STATIC_URL + 'default/media/js/tinymce/'
+#TINYMCE_URL = STATIC_URL + 'default/media/js/tinymce/'
 TINYMCE_DEFAULT_CONFIG = {
     'plugins': 'askbot_imageuploader,askbot_attachment',
     'convert_urls': False,
     'theme': 'advanced',
-    'content_css': STATIC_URL + 'default/media/style/tinymce/content.css',
+
     'force_br_newlines': True,
     'force_p_newlines': False,
     'forced_root_block': '',
     'mode' : 'textareas',
-    'oninit': "function(){ tinyMCE.activeEditor.setContent(askbot['data']['editorContent'] || ''); }",
+    'oninit': "TinyMCE.onInitHook",
+
     'plugins': 'askbot_imageuploader,askbot_attachment',
     'theme_advanced_toolbar_location' : 'top',
     'theme_advanced_toolbar_align': 'left',
@@ -307,7 +312,7 @@ TINYMCE_DEFAULT_CONFIG = {
     'theme_advanced_resizing': True,
     'theme_advanced_resize_horizontal': False,
     'theme_advanced_statusbar_location': 'bottom',
-    'width': '723',
+    'width': '730',
     'height': '250'
 }
 
@@ -329,7 +334,6 @@ if 'ASKBOT_CSS_DEVEL' in locals() and ASKBOT_CSS_DEVEL == True:
 
 COMPRESS_JS_FILTERS = []
 COMPRESS_PARSER = 'compressor.parser.HtmlParser'
-JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)
 
 SOUTH_TESTS_MIGRATE = False
 
