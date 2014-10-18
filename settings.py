@@ -290,9 +290,9 @@ GROUP_MESSAGING = {
 ASKBOT_MULTILINGUAL = False
 
 ASKBOT_CSS_DEVEL = False
-if 'ASKBOT_CSS_DEVEL' in locals() and ASKBOT_CSS_DEVEL == TRUE:
+if 'ASKBOT_CSS_DEVEL' in locals() and ASKBOT_CSS_DEVEL == True:
     COMPRESS_PRECOMPILERS = (
-       ('text/less',' 'less {infile} {outfile}'),
+       ('text/less',' 'lessc {infile} {outfile}'),
    )
 
 COMPRESS_JS_FILTERS = []
