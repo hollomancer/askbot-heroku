@@ -290,10 +290,11 @@ RECAPTCHA_USE_SSL = True
 ENABLE_HAYSTACK_SEARCH = False
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
-TINYMCE_COMPRESSOR = False
+
+TINYMCE_COMPRESSOR = True
 TINYMCE_SPELLCHECKER = False
 TINYMCE_JS_ROOT = os.path.join(STATIC_ROOT, 'default/media/js/tinymce/')
-#TINYMCE_URL = STATIC_URL + 'default/media/js/tinymce/'
+TINYMCE_URL = STATIC_URL + 'default/media/js/tinymce/'
 TINYMCE_DEFAULT_CONFIG = {
     'plugins': 'askbot_imageuploader,askbot_attachment',
     'convert_urls': False,
