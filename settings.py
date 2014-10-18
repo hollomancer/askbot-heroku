@@ -129,7 +129,6 @@ FILE_UPLOAD_HANDLERS = (
 )
 ASKBOT_ALLOWED_UPLOAD_FILE_TYPES = ('.jpg', '.jpeg', '.gif', '.bmp', '.png', '.tiff')
 ASKBOT_MAX_UPLOAD_FILE_SIZE = 1024 * 1024 #result in bytes
-DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
 
 #TEMPLATE_DIRS = (,) #template have no effect in askbot, use the variable below
@@ -302,3 +301,14 @@ JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)
 SOUTH_TESTS_MIGRATE = False
 
 VERIFIER_EXPIRE_DAYS = 3
+
+#S3/Heroku integration
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
+
+STATICFILES_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+
+STATIC_URL = 'http://' + AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com/'
+ADMIN_MEDIA_PREFIX = STATIC_URL + 'admin/'
