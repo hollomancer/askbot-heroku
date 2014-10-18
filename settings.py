@@ -90,7 +90,7 @@ STATIC_ROOT = os.path.join(PROJECT_ROOT, 'static')
 ADMIN_MEDIA_PREFIX = STATIC_URL + 'admin/'
 
 # Make up some unique string, and don't share it with anybody.
-SECRET_KEY = '6623f34545f4c5f969c36c80702eb6a4'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
