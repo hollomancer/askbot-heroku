@@ -2,4 +2,4 @@
 psycopg2
 dj-database-url
 boto
-storages
+django-storages
