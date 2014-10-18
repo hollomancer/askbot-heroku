@@ -4,4 +4,4 @@ dj-database-url
 boto
 django-heroku-memcacheify
 pylibmc==1.2.3
-storages
+django-storages
