@@ -20,6 +20,8 @@ To deploy in heroku:
    $ heroku run python ./manage.py syncdb
    $ heroku run python ./manage.py migrate
 
+TODO: 5. To set up AWS:
+
 To get a value for SECRET_KEY you can use the linux utility ``apg``.
 
 I will try to keep this repository synced with https://github.com/ASKBOT/askbot-devel.git but this is not guaranteed.
