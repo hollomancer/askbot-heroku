@@ -182,6 +182,7 @@ INSTALLED_APPS = (
     'tinymce',
     'compressor',
     'group_messaging',
+	'storages',
     #'avatar',#experimental use git clone git://github.com/ericflo/django-avatar.git$
 )
 
