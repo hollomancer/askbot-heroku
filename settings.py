@@ -187,6 +187,7 @@ INSTALLED_APPS = (
 )
 
 ###no more memcacheify!
+def get_cache():
   import os
   try:
     os.environ['MEMCACHE_SERVERS'] = os.environ['MEMCACHIER_SERVERS'].replace(',', ';')
