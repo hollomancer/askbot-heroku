@@ -308,14 +308,26 @@ RECAPTCHA_USE_SSL = True
 	
 #HAYSTACK_SETTINGS
 ENABLE_HAYSTACK_SEARCH = True
+
+from urlparse import urlparse
+
+es = urlparse(os.environ.get('SEARCHBOX_URL') or 'http://127.0.0.1:9200/')
+
+port = es.port or 80
+
 HAYSTACK_CONNECTIONS = {
     'default': {
         'ENGINE': 'haystack.backends.elasticsearch_backend.ElasticsearchSearchEngine',
-        'URL': os.environ.get('BONSAI_URL'),
-        'INDEX_NAME': 'haystack',
+        'URL': es.scheme + '://' + es.hostname + ':' + str(port),
+        'INDEX_NAME': 'documents',
     },
+}
+
+if es.username:
+    HAYSTACK_CONNECTIONS['default']['KWARGS'] = {"http_auth": es.username + ':' + es.password}
 }	
 HAYSTACK_SIGNAL_PROCESSOR = 'askbot.search.haystack.signals.AskbotRealtimeSignalProcessor'
+
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
 
