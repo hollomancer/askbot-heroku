@@ -192,7 +192,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     #'debug_toolbar',
     #Optional, to enable haystack search
-    #'haystack',
+    'haystack',
     'askbot',
     'askbot.deps.django_authopenid',
     #'askbot.importers.stackexchange', #se loader
@@ -307,7 +307,14 @@ CSRF_COOKIE_NAME = 'askbot_csrf'
 RECAPTCHA_USE_SSL = True
 	
 #HAYSTACK_SETTINGS
-ENABLE_HAYSTACK_SEARCH = False
+ENABLE_HAYSTACK_SEARCH = True
+HAYSTACK_CONNECTIONS = {
+    'default': {
+        'ENGINE': 'haystack.backends.elasticsearch_backend.ElasticsearchSearchEngine',
+        'URL': os.environ.get('BONSAI_URL'),
+        'INDEX_NAME': 'haystack',
+    },
+HAYSTACK_SIGNAL_PROCESSOR = 'askbot.search.haystack.signals.AskbotRealtimeSignalProcessor'
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
 
