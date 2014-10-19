@@ -11,7 +11,7 @@ ASKBOT_SELF_TEST = False
 ASKBOT_ROOT = os.path.abspath(os.path.dirname(askbot.__file__))
 site.addsitedir(os.path.join(ASKBOT_ROOT, 'deps'))
 
-DEBUG = os.environ.get('DEBUG_STATE')#set to True to enable debugging
+DEBUG = False #set to True to enable debugging
 TEMPLATE_DEBUG = False#keep false when debugging jinja2 templates
 INTERNAL_IPS = ('*',)
 
@@ -30,12 +30,12 @@ DATABASES = {'default': dj_database_url.config()}
 #outgoing mail server settings
 SERVER_EMAIL = ''
 DEFAULT_FROM_EMAIL = ''
-EMAIL_HOST_USER = ''
-EMAIL_HOST_PASSWORD = ''
 EMAIL_SUBJECT_PREFIX = ''
-EMAIL_HOST=''
-EMAIL_PORT=''
-EMAIL_USE_TLS=False
+EMAIL_HOST = "smtp.sendgrid.net"
+EMAIL_HOST_USER = os.environ.get("SENDGRID_USERNAME", "")
+EMAIL_HOST_PASSWORD = os.environ.get("SENDGRID_PASSWORD", "")
+EMAIL_PORT = 25
+EMAIL_USE_TLS = False
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 #incoming mail settings
@@ -254,6 +254,21 @@ AUTHENTICATION_BACKENDS = (
 
 #logging settings
 # Log to stdout so that the logs are collected by heroku
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+        }
+    }
+}
 logging.basicConfig(
     stream=sys.stdout,
     level=logging.CRITICAL,
