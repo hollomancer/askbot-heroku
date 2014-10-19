@@ -6,3 +6,4 @@ pylibmc==1.2.3
 django-storages
 waitress
 newrelic
+django-haystack
