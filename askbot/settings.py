@@ -14,6 +14,7 @@ site.addsitedir(os.path.join(ASKBOT_ROOT, 'deps'))
 DEBUG = False #set to True to enable debugging
 TEMPLATE_DEBUG = False#keep false when debugging jinja2 templates
 INTERNAL_IPS = ('*',)
+ALLOWED_HOSTS = ('*',)
 
 ADMINS = (
     (os.environ.get('ADMIN_NAME'), os.environ.get('ADMIN_EMAIL')),
