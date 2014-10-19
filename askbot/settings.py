@@ -314,6 +314,7 @@ HAYSTACK_CONNECTIONS = {
         'URL': os.environ.get('BONSAI_URL'),
         'INDEX_NAME': 'haystack',
     },
+}	
 HAYSTACK_SIGNAL_PROCESSOR = 'askbot.search.haystack.signals.AskbotRealtimeSignalProcessor'
 #more information
 #http://django-haystack.readthedocs.org/en/v1.2.7/settings.html
