@@ -1,1 +1,1 @@
-web: waitress-serve --port=$PORT askbot.wsgi:app
+web: waitress-serve --port=$PORT askbot.wsgi:application

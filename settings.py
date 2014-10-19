@@ -275,6 +275,8 @@ logging.basicConfig(
     format='%(pathname)s TIME: %(asctime)s MSG: %(filename)s:%(funcName)s:%(lineno)d %(message)s',
 )
 
+WSGI_APPLICATION = "mysite.wsgi.application"
+
 ###########################
 #
 #   this will allow running your forum with url like http://site.com/forum
