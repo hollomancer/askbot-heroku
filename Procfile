@@ -1,1 +1,1 @@
-web: waitress-serve --port=$PORT django.wsgi:application
+web: waitress-serve --port=$PORT askbot.django.wsgi:application
