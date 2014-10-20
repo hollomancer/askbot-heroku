@@ -225,6 +225,7 @@ CACHES = {
    'default': {
 	'BACKEND': 'redis_cache.RedisCache',
         'LOCATION': '%s:%s' % (redis_url.hostname, redis_url.port),
+        'KEY_PREFIX': 'askbot_'
         'OPTIONS': {
             'PASSWORD': redis_url.password,
             'DB': 0,
