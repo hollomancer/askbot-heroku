@@ -2,7 +2,7 @@
 psycopg2
 dj-database-url
 boto
-django-pylibmc-sasl
+django-redis-cacheo
 django-storages
 waitress
 newrelic

@@ -28,7 +28,7 @@ MANAGERS = ADMINS
 import dj_database_url
 DATABASES = {'default': dj_database_url.config()}
 
-#outgoing mail server settings
+# outgoing mail server settings
 SERVER_EMAIL = ''
 DEFAULT_FROM_EMAIL = ''
 EMAIL_SUBJECT_PREFIX = ''
@@ -142,6 +142,8 @@ MIDDLEWARE_CLASSES = (
     'askbot.middleware.spaceless.SpacelessMiddleware',
 	"bugsnag.django.middleware.BugsnagMiddleware"
 )
+
+# Bugsnag
 BUGSNAG = {
   "api_key": os.environ.get('BUGSNAG_API_KEY'),
   "project_root": ASKBOT_ROOT,
@@ -216,32 +218,18 @@ INSTALLED_APPS = (
     #'avatar',#experimental use git clone git://github.com/ericflo/django-avatar.git$
 )
 
-# Memcachier for Heroku
-def get_cache():
-  import os
-  try:
-    os.environ['MEMCACHE_SERVERS'] = os.environ['MEMCACHIER_SERVERS'].replace(',', ';')
-    os.environ['MEMCACHE_USERNAME'] = os.environ['MEMCACHIER_USERNAME']
-    os.environ['MEMCACHE_PASSWORD'] = os.environ['MEMCACHIER_PASSWORD']
-    return {
-      'default': {
-        'BACKEND': 'django_pylibmc.memcached.PyLibMCCache',
-        'KEY_PREFIX': 'askbot_',
-        'TIMEOUT': 500,
-        'BINARY': True,
-        'OPTIONS': { 'tcp_nodelay': True }
-      }
-    }
-  except:
-    return {
-      'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'
-      }
-    }
+# Redis for Heroku
+redis_url = urlparse.urlparse(os.environ.get('REDISCLOUD_URL'))
+CACHES = {
+   'default': {
+	'BACKEND': 'redis_cache.RedisCache',
+        'LOCATION': '%s:%s' % (redis_url.hostname, redis_url.port),
+        'OPTIONS': {
+            'PASSWORD': redis_url.password,
+            'DB': 0,
+   }
+}
 
-CACHES = get_cache()
-
-#setup memcached for production use!
 #see http://docs.djangoproject.com/en/1.1/topics/cache/ for detailsdef get_cache():
 CACHE_BACKEND = 'locmem://'
 #needed for django-keyedcache
