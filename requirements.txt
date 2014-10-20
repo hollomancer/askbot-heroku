@@ -2,7 +2,6 @@
 psycopg2
 dj-database-url
 boto
-pylibmc
 django-pylibmc
 django-storages
 waitress
