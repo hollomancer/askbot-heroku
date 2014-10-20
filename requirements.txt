@@ -2,7 +2,7 @@
 psycopg2
 dj-database-url
 boto
-django-redis-cacheo
+django-redis-cache
 django-storages
 waitress
 newrelic
