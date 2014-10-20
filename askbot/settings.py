@@ -227,6 +227,7 @@ CACHES = {
         'OPTIONS': {
             'PASSWORD': redis_url.password,
             'DB': 0,
+         }
    }
 }
 
