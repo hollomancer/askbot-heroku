@@ -142,6 +142,10 @@ MIDDLEWARE_CLASSES = (
     'askbot.middleware.spaceless.SpacelessMiddleware',
 	"bugsnag.django.middleware.BugsnagMiddleware"
 )
+BUGSNAG = {
+  "api_key": os.environ.get('BUGSNAG_API_KEY'),
+  "project_root": ASKBOT_ROOT,
+}
 
 JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)
 COMPRESS_PRECOMPILERS = (
