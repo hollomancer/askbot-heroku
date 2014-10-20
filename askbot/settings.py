@@ -140,6 +140,7 @@ MIDDLEWARE_CLASSES = (
     #'debug_toolbar.middleware.DebugToolbarMiddleware',
     'askbot.middleware.view_log.ViewLogMiddleware',
     'askbot.middleware.spaceless.SpacelessMiddleware',
+	"bugsnag.django.middleware.BugsnagMiddleware"
 )
 
 JINJA2_EXTENSIONS = ('compressor.contrib.jinja2ext.CompressorExtension',)

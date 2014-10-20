@@ -8,3 +8,4 @@ waitress
 newrelic
 django-haystack
 elasticsearch
+bugsnag>=1.2.5
