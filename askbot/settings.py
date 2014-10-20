@@ -3,7 +3,7 @@ import os.path
 import logging
 import sys
 import askbot
-import urlparlse
+import urlparse
 import site
 
 ASKBOT_SELF_TEST = False
